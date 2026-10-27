@@ -1,0 +1,780 @@
+// =========================================================
+//  Wedding Snap - modern photobooth
+//  Flow: home → layout → booth (camera) → edit → result → gallery
+// =========================================================
+
+const $ = (id) => document.getElementById(id);
+
+// =========================================================
+//  State = what's going on right now
+// =========================================================
+const state = {
+  layoutId: "strip4",
+  frameId:  "noir",
+  filterId: "none",
+  shots:    [],      // one raw (unfiltered) canvas per slot, null = empty
+  current:  0,       // which slot we're filling
+  retakeOne: false,  // true when retaking a single photo from the edit screen
+  busy:     false,   // countdown running
+  runId:    0,       // bumps when a countdown is cancelled
+  timer:    CONFIG.TIMERS[0],
+  facing:   "user",  // "user" = selfie camera, "environment" = back camera
+  stream:   null,
+  final:    null,    // { blob, url } of the finished photo
+};
+
+const layout   = () => LAYOUTS[state.layoutId];
+const frame    = () => FRAMES.find((f) => f.id === state.frameId);
+const filter   = () => FILTERS.find((f) => f.id === state.filterId);
+const findFilter = (id) => FILTERS.find((f) => f.id === id);
+
+// PNG frames bring their own size + photo windows; themes use the layout's
+function geometry(fr = frame()) {
+  return fr.type === "png" ? fr : layout();
+}
+
+function framesForLayout() {
+  return FRAMES.filter((f) => f.type === "theme" || f.layout === state.layoutId);
+}
+
+// =========================================================
+//  Small helpers
+// =========================================================
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+function randomToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Uploads made from THIS phone: { fileId: token }. Only these can be deleted.
+const Mine = {
+  all() { return JSON.parse(localStorage.getItem("weddingsnap.mine") || "{}"); },
+  add(id, token) { const m = this.all(); m[id] = token; localStorage.setItem("weddingsnap.mine", JSON.stringify(m)); },
+  remove(id) { const m = this.all(); delete m[id]; localStorage.setItem("weddingsnap.mine", JSON.stringify(m)); },
+  token(id) { return this.all()[id]; },
+};
+
+// Draw `img` to fill (x, y, w, h) completely, cropping the overflow ("cover")
+function drawCover(ctx, img, x, y, w, h) {
+  const iw = img.videoWidth || img.naturalWidth || img.width;
+  const ih = img.videoHeight || img.naturalHeight || img.height;
+  const scale = Math.max(w / iw, h / ih);
+  const sw = w / scale, sh = h / scale;
+  ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, x, y, w, h);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// Shrink the font until the text fits in maxWidth
+function fitText(ctx, text, x, y, maxWidth, size, font) {
+  do {
+    ctx.font = font.replace("{size}", size + "px");
+    size -= 2;
+  } while (ctx.measureText(text).width > maxWidth && size > 10);
+  ctx.fillText(text, x, y);
+}
+
+// =========================================================
+//  Screens
+// =========================================================
+function show(screenId) {
+  document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === screenId));
+  document.querySelector('meta[name="theme-color"]')
+    .setAttribute("content", screenId === "booth" ? "#0f0d0c" : "#f7f2ec");
+
+  // Camera is only needed in the booth. Turn it off elsewhere to save battery.
+  if (screenId === "booth") startCamera();
+  else if (screenId !== "edit") stopCamera();   // keep it warm while editing (for retakes)
+
+  if (screenId === "gallery") loadGallery();
+  window.scrollTo(0, 0);
+}
+
+document.querySelectorAll("[data-go]").forEach((btn) =>
+  btn.addEventListener("click", () => show(btn.dataset.go)));
+
+// =========================================================
+//  PNG frames come from frames/frames.json (made by tools/build-frames.mjs).
+//  A frame with an unusual number of photos gets its own layout.
+// =========================================================
+const framesReady = fetch("frames/frames.json", { cache: "no-cache" })
+  .then((res) => res.json())
+  .then((data) => data.frames.forEach((fr) => {
+    FRAMES.push({ ...fr, type: "png" });
+    if (!LAYOUTS[fr.layout]) {
+      const n = fr.slots.length;
+      LAYOUTS[fr.layout] = { name: fr.name, hint: n + (n === 1 ? " photo" : " photos"),
+                             width: fr.width, height: fr.height, slots: fr.slots };
+    }
+  }))
+  .catch(() => console.warn("No frames/frames.json - only built-in frames"));
+
+// Fonts + frame images must be loaded before drawing on canvas
+const frameImages = {};
+const ready = Promise.all([
+  document.fonts.load('italic 500 80px "Cormorant Garamond"'),
+  document.fonts.load('500 30px "DM Sans"'),
+  framesReady.then(() => Promise.all(FRAMES.filter((f) => f.type === "png").map((f) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { frameImages[f.id] = img; resolve(); };
+    img.onerror = () => { console.warn("Frame not found:", f.src); resolve(); };
+    img.src = encodeURI(f.src);
+  })))),
+]).catch(() => {});
+
+// =========================================================
+//  1. HOME
+// =========================================================
+$("homeTitle").textContent  = CONFIG.TITLE;
+$("homeCouple").textContent = CONFIG.COUPLE;
+
+$("homeStart").addEventListener("click", () => show("layout"));
+$("homeGallery").addEventListener("click", () => show("gallery"));
+
+// Music starts on the guest's first tap anywhere. (Browsers don't allow
+// sound before the user touches the page, so this is the earliest possible.)
+// If they switched it off last time, it stays off.
+const MUSIC_PREF = "weddingsnap.music";
+const FIRST_TAP = ["click", "keydown"];
+
+function firstTap(e) {
+  FIRST_TAP.forEach((t) => document.removeEventListener(t, firstTap, true));
+  Sound.unlock();
+  if (e.target.closest && e.target.closest("#musicBtn")) return;   // the button handles itself
+  if (localStorage.getItem(MUSIC_PREF) !== "off" && !Sound.playing) {
+    $("musicBtn").classList.toggle("on", Sound.toggle());
+  }
+}
+FIRST_TAP.forEach((t) => document.addEventListener(t, firstTap, true));
+
+$("musicBtn").addEventListener("click", () => {
+  const on = Sound.toggle();
+  localStorage.setItem(MUSIC_PREF, on ? "on" : "off");
+  $("musicBtn").classList.toggle("on", on);
+});
+
+// "♪ Song name" when the music changes (not while posing in the booth)
+window.addEventListener("songchange", (e) => {
+  if (!$("booth").classList.contains("active")) toast("♪ " + e.detail);
+});
+
+// =========================================================
+//  2. LAYOUT PICKER
+// =========================================================
+function buildLayoutCards() {
+  const grid = $("layoutGrid");
+  grid.innerHTML = "";
+  Object.entries(LAYOUTS).forEach(([id, l]) => {
+    const card = document.createElement("button");
+    card.className = "layoutCard";
+
+    // Mini drawing of the layout, using the real slot positions as %
+    const mini = document.createElement("div");
+    mini.className = "mini";
+    mini.style.aspectRatio = l.width + " / " + l.height;
+    l.slots.forEach((s) => {
+      const box = document.createElement("i");
+      box.style.left   = (s.x / l.width  * 100) + "%";
+      box.style.top    = (s.y / l.height * 100) + "%";
+      box.style.width  = (s.w / l.width  * 100) + "%";
+      box.style.height = (s.h / l.height * 100) + "%";
+      mini.appendChild(box);
+    });
+
+    card.appendChild(mini);
+    card.insertAdjacentHTML("beforeend", `<b>${l.name}</b><small>${l.hint}</small>`);
+    card.addEventListener("click", () => chooseLayout(id));
+    grid.appendChild(card);
+  });
+}
+
+function chooseLayout(id) {
+  state.layoutId = id;
+  if (!framesForLayout().some((f) => f.id === state.frameId)) {
+    state.frameId = framesForLayout()[0].id;
+  }
+  resetShots();
+  show("booth");
+}
+
+function resetShots() {
+  state.shots = layout().slots.map(() => null);
+  state.current = 0;
+  state.retakeOne = false;
+}
+
+// =========================================================
+//  3. BOOTH
+// =========================================================
+const video = $("camera");
+const viewfinder = $("viewfinder");
+let wakeLock = null;
+
+async function startCamera() {
+  // Live preview has the same shape as the photo slots
+  const s = layout().slots[0];
+  viewfinder.style.aspectRatio = s.w + " / " + s.h;
+  viewfinder.style.setProperty("--ar", s.w / s.h);
+  video.style.filter = filterToCss(filter());
+  buildLiveFilters();
+  renderBooth();
+
+  if (state.stream) return;
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: state.facing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    });
+    video.srcObject = state.stream;
+    video.classList.toggle("mirror", state.facing === "user");
+    $("camError").classList.add("hidden");
+    $("shutterBtn").disabled = false;
+  } catch (err) {
+    console.warn(err);
+    $("camError").classList.remove("hidden");
+    $("shutterBtn").disabled = true;
+  }
+
+  // Keep the screen awake while in the booth
+  try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
+}
+
+function stopCamera() {
+  if (state.stream) state.stream.getTracks().forEach((t) => t.stop());
+  state.stream = null;
+  video.srcObject = null;
+  wakeLock?.release?.();
+  wakeLock = null;
+}
+
+// Header text + the little dots that show which shots are done
+function renderBooth() {
+  const total = state.shots.length;
+  $("boothTitle").textContent = state.retakeOne
+    ? "Retake photo " + (state.current + 1)
+    : total === 1 ? "Strike a pose" : "Shot " + (state.current + 1) + " of " + total;
+
+  const dots = $("slotDots");
+  dots.innerHTML = "";
+  if (total > 1) {
+    state.shots.forEach((shot, i) => {
+      const d = document.createElement("span");
+      d.className = "dot" + (shot ? " done" : "") + (i === state.current ? " now" : "");
+      if (shot) {
+        const thumb = document.createElement("canvas");
+        thumb.width = 60; thumb.height = 60;
+        drawCover(thumb.getContext("2d"), shot, 0, 0, 60, 60);
+        d.appendChild(thumb);
+      } else {
+        d.textContent = i + 1;
+      }
+      dots.appendChild(d);
+    });
+  }
+  $("timerBtn").textContent = state.timer + "s";
+  $("shutterBtn").classList.toggle("busy", state.busy);
+}
+
+// Live filter chips in the booth
+function buildLiveFilters() {
+  const wrap = $("liveFilters");
+  wrap.innerHTML = "";
+  FILTERS.forEach((f) => {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (f.id === state.filterId ? " selected" : "");
+    chip.textContent = f.name;
+    chip.addEventListener("click", () => {
+      state.filterId = f.id;
+      video.style.filter = filterToCss(f);
+      wrap.querySelectorAll(".chip").forEach((c) => c.classList.toggle("selected", c === chip));
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+// Grab the current camera frame, cropped to the slot shape.
+// Stored WITHOUT filter so the guest can still change it later.
+function capture() {
+  const s = layout().slots[0];
+  const long = 1400;   // enough detail for printing, small enough to upload
+  const w = s.w >= s.h ? long : Math.round(long * s.w / s.h);
+  const h = s.w >= s.h ? Math.round(long * s.h / s.w) : long;
+
+  const shot = document.createElement("canvas");
+  shot.width = w;
+  shot.height = h;
+  const sctx = shot.getContext("2d");
+  if (state.facing === "user") {   // mirror, like looking in a mirror
+    sctx.translate(w, 0);
+    sctx.scale(-1, 1);
+  }
+  drawCover(sctx, video, 0, 0, w, h);
+  return shot;
+}
+
+function flash() {
+  const f = $("flash");
+  f.style.transition = "none";
+  f.style.opacity = 1;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    f.style.transition = "opacity 0.5s ease-out";
+    f.style.opacity = 0;
+  }));
+}
+
+// 3... 2... 1... Returns false if it was cancelled
+async function runCountdown(runId) {
+  const box = $("countdown");
+  const num = $("countNum");
+  box.classList.add("show");
+  for (let n = state.timer; n > 0; n--) {
+    if (runId !== state.runId) { box.classList.remove("show"); return false; }
+    num.textContent = n;
+    $("countHint").textContent = n === 1 ? "Smile!" : "Get ready";
+    num.classList.remove("pop");
+    void num.offsetWidth;          // restart the CSS animation
+    num.classList.add("pop");
+    Sound.beep(false);
+    await wait(1000);
+  }
+  box.classList.remove("show");
+  return runId === state.runId;
+}
+
+// Shutter: shoot every empty slot in a row (or just one when retaking)
+$("shutterBtn").addEventListener("click", async () => {
+  if (state.busy || !state.stream) return;
+  state.busy = true;
+  const runId = ++state.runId;
+  Sound.duck(true);
+  renderBooth();
+
+  const todo = state.retakeOne
+    ? [state.current]
+    : state.shots.map((s, i) => (s ? null : i)).filter((i) => i !== null);
+
+  for (let k = 0; k < todo.length; k++) {
+    state.current = todo[k];
+    renderBooth();
+    if (!(await runCountdown(runId))) return;
+
+    state.shots[state.current] = capture();
+    Sound.shutter();
+    flash();
+    renderBooth();
+
+    if (k < todo.length - 1) await wait(CONFIG.POSE_PAUSE);
+    if (runId !== state.runId) return;
+  }
+
+  state.busy = false;
+  Sound.duck(false);
+  goToEdit();
+});
+
+// Pick a photo from the phone gallery for the current slot
+$("pickFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    const s = layout().slots[0];
+    const shot = document.createElement("canvas");
+    shot.width = 1400;
+    shot.height = Math.round(1400 * s.h / s.w);
+    drawCover(shot.getContext("2d"), img, 0, 0, shot.width, shot.height);
+    URL.revokeObjectURL(img.src);
+
+    state.shots[state.current] = shot;
+    const nextEmpty = state.shots.findIndex((x) => !x);
+    if (state.retakeOne || nextEmpty === -1) goToEdit();
+    else { state.current = nextEmpty; renderBooth(); }
+  };
+  img.src = URL.createObjectURL(file);
+});
+
+$("timerBtn").addEventListener("click", () => {
+  const i = CONFIG.TIMERS.indexOf(state.timer);
+  state.timer = CONFIG.TIMERS[(i + 1) % CONFIG.TIMERS.length];
+  renderBooth();
+});
+
+$("flipBtn").addEventListener("click", () => {
+  if (state.busy) return;
+  state.facing = state.facing === "user" ? "environment" : "user";
+  stopCamera();
+  startCamera();
+});
+
+$("boothBack").addEventListener("click", () => {
+  if (state.busy) {               // cancel the countdown
+    state.runId++;
+    state.busy = false;
+    Sound.duck(false);
+    $("countdown").classList.remove("show");
+    renderBooth();
+    return;
+  }
+  if (state.retakeOne) { state.retakeOne = false; show("edit"); return; }
+  show("layout");
+});
+
+// =========================================================
+//  4. EDIT  (frame + filter, tap to retake)
+// =========================================================
+const preview = $("preview");
+
+// Filtering is slow-ish, so remember results per shot + filter
+const filterCache = new WeakMap();
+function filtered(shot, f) {
+  if (!filterCache.has(shot)) filterCache.set(shot, {});
+  const c = filterCache.get(shot);
+  return c[f.id] || (c[f.id] = applyFilter(shot, f));
+}
+
+// Draw the full photo (frame + photos + text) onto `canvas`
+function compose(canvas, fr = frame(), f = filter()) {
+  const g = geometry(fr);
+  canvas.width = g.width;
+  canvas.height = g.height;
+  const ctx = canvas.getContext("2d");
+
+  if (fr.type === "png") {
+    const img = frameImages[fr.id];
+    if (img && !fr.overlay) ctx.drawImage(img, 0, 0, g.width, g.height);
+    drawPhotos(ctx, g, f);
+    if (img && fr.overlay) ctx.drawImage(img, 0, 0, g.width, g.height);
+    return;
+  }
+
+  drawThemeBackground(ctx, g, fr);
+  drawPhotos(ctx, g, f);
+  drawFooter(ctx, g, fr);
+}
+
+function drawPhotos(ctx, g, f) {
+  g.slots.forEach((slot, i) => {
+    const shot = state.shots[i];
+    ctx.save();
+    roundRect(ctx, slot.x, slot.y, slot.w, slot.h, slot.r || 0);
+    ctx.clip();
+    if (shot) {
+      drawCover(ctx, filtered(shot, f), slot.x, slot.y, slot.w, slot.h);
+    } else {
+      ctx.fillStyle = "rgba(127,127,127,0.25)";
+      ctx.fillRect(slot.x, slot.y, slot.w, slot.h);
+    }
+    ctx.restore();
+  });
+}
+
+function drawThemeBackground(ctx, g, fr) {
+  if (fr.gradient) {
+    const grad = ctx.createLinearGradient(0, 0, 0, g.height);
+    grad.addColorStop(0, fr.bg);
+    grad.addColorStop(1, fr.gradient);
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = fr.bg;
+  }
+  ctx.fillRect(0, 0, g.width, g.height);
+
+  // Film: sprocket holes down both edges
+  if (fr.film) {
+    const m = g.slots[0].x;
+    const hw = m * 0.38, hh = m * 0.55, gap = hh * 0.9;
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    for (let y = gap / 2; y < g.height - hh; y += hh + gap) {
+      roundRect(ctx, (m - hw) / 2, y, hw, hh, hw * 0.25); ctx.fill();
+      roundRect(ctx, g.width - m + (m - hw) / 2, y, hw, hh, hw * 0.25); ctx.fill();
+    }
+  }
+}
+
+function drawFooter(ctx, g, fr) {
+  const bottom = Math.max(...g.slots.map((s) => s.y + s.h));
+  const space = g.height - bottom;
+  const cx = g.width / 2;
+  const maxW = g.width * 0.84;
+  const big = g.width * 0.085;
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  ctx.fillStyle = fr.text;
+  fitText(ctx, CONFIG.TITLE, cx, bottom + space * 0.36, maxW, Math.round(big),
+          'italic 500 {size} "Cormorant Garamond", serif');
+
+  // thin divider line
+  ctx.strokeStyle = fr.sub;
+  ctx.globalAlpha = 0.6;
+  ctx.lineWidth = Math.max(1, g.width / 540);
+  ctx.beginPath();
+  ctx.moveTo(cx - g.width * 0.06, bottom + space * 0.54);
+  ctx.lineTo(cx + g.width * 0.06, bottom + space * 0.54);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = fr.sub;
+  fitText(ctx, CONFIG.COUPLE, cx, bottom + space * 0.68, maxW, Math.round(big * 0.36),
+          '500 {size} "DM Sans", sans-serif');
+  fitText(ctx, CONFIG.DATE, cx, bottom + space * 0.82, maxW, Math.round(big * 0.3),
+          '400 {size} "DM Sans", sans-serif');
+}
+
+async function goToEdit() {
+  state.retakeOne = false;
+  state.current = 0;
+  await ready;
+  buildFrameChips();
+  buildFilterChips();
+  compose(preview);
+  show("edit");
+}
+
+function buildFrameChips() {
+  const wrap = $("frameChips");
+  wrap.innerHTML = "";
+  framesForLayout().forEach((fr) => {
+    const chip = document.createElement("button");
+    chip.className = "swatch" + (fr.id === state.frameId ? " selected" : "");
+    const sw = document.createElement("span");
+    if (fr.type === "png") sw.style.backgroundImage = `url("${encodeURI(fr.src)}")`;
+    else sw.style.background = fr.gradient ? `linear-gradient(${fr.bg}, ${fr.gradient})` : fr.bg;
+    chip.appendChild(sw);
+    chip.insertAdjacentHTML("beforeend", `<small>${fr.name}</small>`);
+    chip.addEventListener("click", () => {
+      state.frameId = fr.id;
+      wrap.querySelectorAll(".swatch").forEach((c) => c.classList.toggle("selected", c === chip));
+      compose(preview);
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+// Filter chips show a tiny preview of photo 1 with that filter
+function buildFilterChips() {
+  const wrap = $("filterChips");
+  wrap.innerHTML = "";
+  const small = document.createElement("canvas");
+  small.width = 96; small.height = 96;
+  drawCover(small.getContext("2d"), state.shots[0], 0, 0, 96, 96);
+
+  FILTERS.forEach((f) => {
+    const chip = document.createElement("button");
+    chip.className = "swatch" + (f.id === state.filterId ? " selected" : "");
+    const thumb = applyFilter(small, f);
+    chip.appendChild(thumb);
+    chip.insertAdjacentHTML("beforeend", `<small>${f.name}</small>`);
+    chip.addEventListener("click", () => {
+      state.filterId = f.id;
+      wrap.querySelectorAll(".swatch").forEach((c) => c.classList.toggle("selected", c === chip));
+      compose(preview);
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+// Tap a photo on the preview → retake just that one
+preview.addEventListener("click", (e) => {
+  const rect = preview.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * preview.width / rect.width;
+  const y = (e.clientY - rect.top) * preview.height / rect.height;
+  const i = geometry().slots.findIndex((s) => x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h);
+  if (i === -1) return;
+  state.current = i;
+  state.retakeOne = true;
+  show("booth");
+});
+
+$("editBack").addEventListener("click", () => {
+  if (!confirm("Retake all photos?")) return;
+  resetShots();
+  show("booth");
+});
+
+$("doneBtn").addEventListener("click", async () => {
+  $("doneBtn").disabled = true;
+  stopCamera();
+
+  const out = document.createElement("canvas");
+  compose(out);
+  const blob = await new Promise((r) => out.toBlob(r, "image/jpeg", 0.9));
+  if (state.final) URL.revokeObjectURL(state.final.url);
+  state.final = { blob, url: URL.createObjectURL(blob), dataUrl: out.toDataURL("image/jpeg", 0.88) };
+
+  $("resultImg").src = state.final.url;
+  $("doneBtn").disabled = false;
+  show("result");
+  upload();
+});
+
+// =========================================================
+//  5. RESULT  (upload + save)
+// =========================================================
+async function upload() {
+  const status = $("uploadStatus");
+  if (!CONFIG.SCRIPT_URL) {
+    status.className = "uploadStatus";
+    status.textContent = "Album not connected yet. Save it to your phone below 💛";
+    return;
+  }
+  status.className = "uploadStatus sending";
+  status.textContent = "Sending to the couple's album…";
+
+  const token = randomToken();
+  try {
+    // text/plain body = no CORS preflight, which Apps Script can't answer
+    const res = await fetch(CONFIG.SCRIPT_URL, {
+      method: "POST",
+      body: JSON.stringify({ action: "upload", image: state.final.dataUrl, token, layout: state.layoutId }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    Mine.add(data.id, token);
+    status.className = "uploadStatus ok";
+    status.textContent = "Sent to the couple's album ✓";
+  } catch (err) {
+    console.warn(err);
+    status.className = "uploadStatus fail";
+    status.innerHTML = 'Couldn\'t send (check your internet). <button class="btn link" id="retryUpload">Try again</button>';
+    $("retryUpload").addEventListener("click", upload);
+  }
+}
+
+// Phones: open the share sheet ("Save Image"). Computers: normal download.
+async function savePhoto(blob, name) {
+  const file = new File([blob], name, { type: "image/jpeg" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); return; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+$("saveBtn").addEventListener("click", () =>
+  savePhoto(state.final.blob, "wedding-snap-" + Date.now() + ".jpg"));
+
+$("againBtn").addEventListener("click", () => {
+  resetShots();
+  show("layout");
+});
+
+// =========================================================
+//  6. GALLERY
+// =========================================================
+let galleryPhotos = [];
+let galleryTab = "all";
+const thumbUrl = (id, size) => `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
+
+async function loadGallery() {
+  const msg = $("galleryMsg");
+  if (!CONFIG.SCRIPT_URL) {
+    msg.textContent = "The gallery appears once the Google Drive album is connected (see README).";
+    $("galleryGrid").innerHTML = "";
+    return;
+  }
+  msg.textContent = "Loading photos…";
+  try {
+    const res = await fetch(CONFIG.SCRIPT_URL + "?action=list");
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    galleryPhotos = data.photos;
+    renderGallery();
+  } catch (err) {
+    console.warn(err);
+    msg.textContent = "Couldn't load the gallery. Pull to refresh or tap ⟳.";
+  }
+}
+
+function renderGallery() {
+  const mine = Mine.all();
+  const list = galleryTab === "mine" ? galleryPhotos.filter((p) => mine[p.id]) : galleryPhotos;
+  $("galleryMsg").textContent = list.length
+    ? list.length + (list.length === 1 ? " photo" : " photos")
+    : galleryTab === "mine" ? "You haven't uploaded any photos yet." : "No photos yet. Be the first! 📸";
+
+  const grid = $("galleryGrid");
+  grid.innerHTML = "";
+  list.forEach((p) => {
+    const item = document.createElement("button");
+    item.className = "tile" + (mine[p.id] ? " mine" : "");
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.src = thumbUrl(p.id, 500);
+    img.alt = "";
+    item.appendChild(img);
+    item.addEventListener("click", () => openLightbox(p));
+    grid.appendChild(item);
+  });
+}
+
+document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => {
+  galleryTab = tab.dataset.tab;
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+  renderGallery();
+}));
+$("refreshBtn").addEventListener("click", loadGallery);
+
+// ---------- Lightbox ----------
+let lbPhoto = null;
+function openLightbox(p) {
+  lbPhoto = p;
+  $("lbImg").src = thumbUrl(p.id, 1600);
+  $("lbDelete").classList.toggle("hidden", !Mine.token(p.id));
+  $("lightbox").classList.remove("hidden");
+}
+$("lbClose").addEventListener("click", () => $("lightbox").classList.add("hidden"));
+
+// Drive images can't be read by our page (CORS), so open the download link
+$("lbSave").addEventListener("click", () => {
+  window.open(`https://drive.google.com/uc?export=download&id=${lbPhoto.id}`, "_blank");
+});
+
+$("lbDelete").addEventListener("click", async () => {
+  if (!confirm("Delete this photo from the album?")) return;
+  try {
+    const res = await fetch(CONFIG.SCRIPT_URL, {
+      method: "POST",
+      body: JSON.stringify({ action: "delete", id: lbPhoto.id, token: Mine.token(lbPhoto.id) }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    Mine.remove(lbPhoto.id);
+    galleryPhotos = galleryPhotos.filter((p) => p.id !== lbPhoto.id);
+    $("lightbox").classList.add("hidden");
+    renderGallery();
+    toast("Photo deleted");
+  } catch (err) {
+    toast("Couldn't delete: " + err.message);
+  }
+});
+
+// =========================================================
+//  Start
+// =========================================================
+buildLayoutCards();
+framesReady.then(buildLayoutCards);   // again, now including frame-only layouts
+resetShots();

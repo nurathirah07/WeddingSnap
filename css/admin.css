@@ -1,0 +1,160 @@
+/* =========================================================
+   Admin page (uses the variables + buttons from style.css)
+   ========================================================= */
+body.admin {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 18px 140px;
+  cursor: auto;
+}
+
+.adminHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 20px;
+}
+.adminHead .display { font-size: 48px; }
+.adminHead .eyebrow { margin-bottom: 4px; }
+
+.btn.small { padding: 9px 16px; font-size: 13px; cursor: pointer; }
+.row.left { justify-content: flex-start; }
+.muted { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 6px 0 14px; }
+.error { color: #b4443c; font-size: 13px; }
+a { color: var(--accent-dark); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+.card h2 { margin: 0; font-size: 20px; font-weight: 500; }
+.cardHead { display: flex; justify-content: space-between; align-items: center; }
+
+/* ---------- Connect form ---------- */
+.field { display: block; margin-bottom: 12px; }
+.field span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.field input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  font: inherit;
+  background: #fff;
+}
+.field input:focus { outline: none; border-color: var(--ink); }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; margin-bottom: 14px; }
+.help { margin-top: 14px; font-size: 14px; color: var(--muted); }
+.help summary { cursor: pointer; color: var(--ink); }
+.help li { margin: 6px 0; }
+
+.connected {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+/* ---------- Drop zones ---------- */
+.dropZone {
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 14px;
+  transition: all 0.2s;
+}
+.dropZone.over { border-color: var(--accent); background: #fbeff0; color: var(--accent-dark); }
+@media (hover: none) { .dropZone { display: none; } }
+
+/* ---------- Badges ---------- */
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 99px;
+  margin-left: 6px;
+  vertical-align: 2px;
+}
+.badge.new  { background: #e3efe4; color: #3f6b43; }
+.badge.del  { background: #f6e1df; color: #b4443c; }
+.badge.wait { background: #f3ead9; color: #8a6a2f; }
+
+.mini {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 99px;
+  padding: 6px 11px;
+  font-size: 12px;
+}
+.mini.danger { color: #b4443c; }
+.empty { color: var(--muted); font-size: 14px; list-style: none; }
+
+/* ---------- Songs ---------- */
+.songList { list-style: none; margin: 0; padding: 0; }
+.song {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.songMain { min-width: 0; flex: 1 1 260px; }
+.songMain b { font-weight: 500; overflow-wrap: anywhere; }
+.songMain small { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+.songBtns { display: flex; gap: 6px; flex-wrap: wrap; }
+.song.delete .songMain { opacity: 0.45; text-decoration: line-through; }
+
+/* ---------- Frames ---------- */
+.frameGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+.frameCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  text-align: center;
+}
+.frameCard canvas { height: 200px; width: auto; max-width: 100%; object-fit: contain; border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+.frameInfo b { font-weight: 500; font-size: 14px; overflow-wrap: anywhere; }
+.frameInfo small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.frameCard.delete canvas, .frameCard.delete .frameInfo { opacity: 0.4; }
+.frameCard.bad { border-color: #e2b4af; background: #fdf5f4; }
+
+/* ---------- Publish bar ---------- */
+.publishBar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(724px, calc(100% - 24px));
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 20px;
+  padding: 14px 16px 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+  z-index: 60;
+}
+.publishBar small { display: block; opacity: 0.7; font-size: 12px; margin-top: 2px; }
+.publishBar a { color: #f1c3c8; }
+.publishBar .btn.primary { background: var(--bg); color: var(--ink); }
+.publishBar .btn.ghost { border-color: rgba(255, 255, 255, 0.4); color: var(--bg); }

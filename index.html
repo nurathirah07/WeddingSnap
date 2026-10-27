@@ -2,87 +2,155 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <!-- Makes the page fit phone screens properly -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wedding Cam - Step 1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f2ec">
+  <title>Wedding Snap · Photobooth</title>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-  <h2>Wedding Cam</h2>
+  <!-- Music on/off, visible on every screen -->
+  <button id="musicBtn" class="musicBtn" aria-label="Toggle music">
+    <span class="bars"><i></i><i></i><i></i></span>
+  </button>
 
-  <!-- Live camera preview.
-       autoplay    = start playing as soon as the stream arrives
-       playsinline = REQUIRED on iPhone, otherwise it opens fullscreen
-       muted       = no audio needed -->
-  <video id="camera" autoplay playsinline muted></video>
+  <!-- ===================== 1. HOME ===================== -->
+  <section class="screen active" id="home">
+    <div class="home-inner">
+      <p class="eyebrow">Welcome to our</p>
+      <h1 class="display" id="homeTitle">Walimatul Urus</h1>
+      <p class="couple" id="homeCouple"></p>
 
-  <br>
-  <button id="startBtn">Start Camera</button>
-  <button id="snapBtn">Snap</button>
+      <div class="hero-strip" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
 
-  <!-- The captured photo gets drawn here -->
-  <canvas id="photo"></canvas>
+      <p class="lede">Capture the day from your point of view.<br>Every photo goes straight to the couple's album.</p>
 
-  <script>
-    // 1. Grab the HTML elements so JavaScript can control them
-    const video    = document.getElementById("camera");
-    const canvas   = document.getElementById("photo");
-    const startBtn = document.getElementById("startBtn");
-    const snapBtn  = document.getElementById("snapBtn");
+      <button class="btn primary big" id="homeStart">Start photobooth</button>
+      <button class="btn ghost" id="homeGallery">View gallery</button>
+    </div>
+  </section>
 
-    // getContext("2d") gives us the "paintbrush" for drawing on the canvas
-    const ctx = canvas.getContext("2d");
+  <!-- ===================== 2. LAYOUT ===================== -->
+  <section class="screen" id="layout">
+    <header class="topbar">
+      <button class="iconBtn" data-go="home" aria-label="Back">←</button>
+      <span>Choose a layout</span>
+      <span class="spacer"></span>
+    </header>
+    <div class="layoutGrid" id="layoutGrid"><!-- built by JS --></div>
+  </section>
 
-    // 2. Start the camera when the button is pressed.
-    //    (Phones, especially iPhone, prefer camera requests to come
-    //    from a user tap rather than on page load.)
-    startBtn.addEventListener("click", async () => {
-      try {
-        // Ask the browser for camera access.
-        // facingMode "user" = front camera, "environment" = back camera
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-          audio: false
-        });
+  <!-- ===================== 3. BOOTH (camera) ===================== -->
+  <section class="screen dark" id="booth">
+    <header class="topbar">
+      <button class="iconBtn" id="boothBack" aria-label="Back">←</button>
+      <span id="boothTitle">Shot 1 of 4</span>
+      <button class="iconBtn" id="flipBtn" aria-label="Switch camera">⟲</button>
+    </header>
 
-        // Send the camera stream into the <video> element
-        video.srcObject = stream;
-      } catch (error) {
-        // Common reasons: user tapped "Block", or page isn't on HTTPS/localhost
-        alert("Couldn't open the camera: " + error.message);
-        console.error(error);
-      }
-    });
+    <div class="viewfinderWrap">
+      <div id="viewfinder">
+        <video id="camera" autoplay playsinline muted></video>
+        <div id="countdown"><span id="countNum"></span><small id="countHint">Get ready</small></div>
+        <div id="flash"></div>
+        <div id="camError" class="hidden">
+          <p>Camera not available.</p>
+          <small>Allow camera access, or pick photos from your gallery instead.</small>
+        </div>
+      </div>
+    </div>
 
-    // 3. Take a photo when Snap is pressed
-    snapBtn.addEventListener("click", () => {
-      // Make sure the camera is actually running first
-      if (!video.srcObject) {
-        alert("Start the camera first!");
-        return;
-      }
+    <div class="slotDots" id="slotDots"><!-- built by JS --></div>
 
-      // Match the canvas size to the real camera resolution
-      // (videoWidth/videoHeight = actual pixels, not the on-screen size)
-      canvas.width  = video.videoWidth;
-      canvas.height = video.videoHeight;
+    <div class="chips" id="liveFilters"><!-- built by JS --></div>
 
-      // Mirror the photo so it matches what the guest saw in the preview.
-      // save() remembers the normal state, restore() puts it back after.
-      ctx.save();
-      ctx.translate(canvas.width, 0); // move to the right edge
-      ctx.scale(-1, 1);               // flip horizontally
+    <div class="shutterRow">
+      <button class="sideBtn" id="timerBtn" aria-label="Countdown timer">3s</button>
+      <button class="shutter" id="shutterBtn" aria-label="Take photo"><span></span></button>
+      <label class="sideBtn" aria-label="Pick from gallery">
+        ⧉
+        <input type="file" id="pickFile" accept="image/*" hidden>
+      </label>
+    </div>
+  </section>
 
-      // Copy the current video frame onto the canvas = the "photo"
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  <!-- ===================== 4. EDIT ===================== -->
+  <section class="screen" id="edit">
+    <header class="topbar">
+      <button class="iconBtn" id="editBack" aria-label="Retake all">↺</button>
+      <span>Make it yours</span>
+      <span class="spacer"></span>
+    </header>
 
-      ctx.restore();
+    <div class="previewWrap">
+      <canvas id="preview"></canvas>
+    </div>
+    <p class="tip">Tap a photo to retake it</p>
 
-      // Show the canvas now that it has a photo
-      canvas.style.display = "inline-block";
-    });
-  </script>
+    <div class="panel">
+      <h3>Frame</h3>
+      <div class="chips" id="frameChips"></div>
+      <h3>Filter</h3>
+      <div class="chips" id="filterChips"></div>
+    </div>
 
+    <div class="bottomBar">
+      <button class="btn primary big" id="doneBtn">Done · Send to album</button>
+    </div>
+  </section>
+
+  <!-- ===================== 5. RESULT ===================== -->
+  <section class="screen" id="result">
+    <div class="result-inner">
+      <div class="printSlot">
+        <img id="resultImg" alt="Your photo">
+      </div>
+      <p class="uploadStatus" id="uploadStatus"></p>
+
+      <div class="row">
+        <button class="btn primary" id="saveBtn">Save to phone</button>
+        <button class="btn ghost" id="againBtn">Take another</button>
+      </div>
+      <button class="btn link" data-go="gallery">See everyone's photos →</button>
+    </div>
+  </section>
+
+  <!-- ===================== 6. GALLERY ===================== -->
+  <section class="screen" id="gallery">
+    <header class="topbar">
+      <button class="iconBtn" data-go="home" aria-label="Back">←</button>
+      <span>Gallery</span>
+      <button class="iconBtn" id="refreshBtn" aria-label="Refresh">⟳</button>
+    </header>
+    <div class="tabs">
+      <button class="tab active" data-tab="all">Everyone</button>
+      <button class="tab" data-tab="mine">Mine</button>
+    </div>
+    <p class="galleryMsg" id="galleryMsg"></p>
+    <div class="masonry" id="galleryGrid"></div>
+  </section>
+
+  <!-- Lightbox for one gallery photo -->
+  <div class="lightbox hidden" id="lightbox">
+    <button class="iconBtn close" id="lbClose" aria-label="Close">✕</button>
+    <img id="lbImg" alt="">
+    <div class="row">
+      <button class="btn primary" id="lbSave">Save</button>
+      <button class="btn danger hidden" id="lbDelete">Delete my upload</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/filters.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

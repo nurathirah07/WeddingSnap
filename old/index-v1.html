@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wedding Cam - Photobooth</title>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #fdf6f0;
+      color: #5a4a42;
+      margin: 0;
+      padding: 16px;
+    }
+
+    h2 { margin: 4px 0 12px; }
+
+    /* ---------- Layout picker ---------- */
+    #layoutPicker {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .layoutBtn {
+      background: white;
+      color: #c97b84;
+      border: 2px solid #c97b84;
+    }
+    .layoutBtn.selected {
+      background: #c97b84;
+      color: white;
+    }
+
+    /* ---------- Live camera ---------- */
+    #viewfinder {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+      /* aspect-ratio is set from JavaScript to match the slot shape */
+    }
+    #viewfinder video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      display: block;
+    }
+
+    /* Big 3-2-1 number on top of the camera */
+    #countdown {
+      position: absolute;
+      inset: 0;                    /* = top/right/bottom/left 0 */
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 120px;
+      font-weight: bold;
+      color: white;
+      text-shadow: 0 0 20px rgba(0,0,0,0.6);
+    }
+
+    /* White flash when the photo is taken */
+    #flash {
+      position: absolute;
+      inset: 0;
+      background: white;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    /* "Shot 2 of 3" text */
+    #status {
+      margin: 10px 0 0;
+      font-weight: bold;
+    }
+
+    /* ---------- Buttons ---------- */
+    button {
+      margin: 10px 4px;
+      padding: 12px 24px;
+      font-size: 16px;
+      border: none;
+      border-radius: 24px;
+      background: #c97b84;
+      color: white;
+    }
+    button.secondary {
+      background: white;
+      color: #c97b84;
+      border: 2px solid #c97b84;
+    }
+
+    /* ---------- The photo strip ---------- */
+    #strip {
+      width: 60%;
+      max-width: 260px;
+      margin-top: 8px;
+      border-radius: 6px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+    }
+    /* On the final screen, show the strip bigger */
+    #strip.big {
+      width: 85%;
+      max-width: 360px;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <h2>Wedding Cam 📸</h2>
+
+  <!-- Choose how many shots -->
+  <div id="layoutPicker">
+    <button class="layoutBtn selected" data-layout="2">2 Grid</button>
+    <button class="layoutBtn" data-layout="3">3 Grid</button>
+  </div>
+
+  <!-- Live camera with countdown + flash on top -->
+  <div id="viewfinder">
+    <video id="camera" autoplay playsinline muted></video>
+    <div id="countdown"></div>
+    <div id="flash"></div>
+  </div>
+
+  <p id="status">Tap Start Camera to begin</p>
+
+  <!-- Each group of buttons is shown at a different moment -->
+  <div id="startControls">
+    <button id="startBtn">Start Camera</button>
+  </div>
+
+  <div id="shootControls" class="hidden">
+    <button id="snapBtn">Snap 📷</button>
+  </div>
+
+  <div id="reviewControls" class="hidden">
+    <button id="retakeBtn" class="secondary">Retake</button>
+    <button id="nextBtn">Next ➜</button>
+  </div>
+
+  <div id="finalControls" class="hidden">
+    <button id="restartBtn" class="secondary">Start Over</button>
+    <button id="proceedBtn">Proceed ✓</button>
+  </div>
+
+  <!-- The strip builds up here, one shot at a time -->
+  <br>
+  <canvas id="strip"></canvas>
+
+  <script>
+    // =========================================================
+    //  SETTINGS - change these for your sister's wedding
+    // =========================================================
+    const TITLE    = "Walimatul Urus";
+    const SUBTITLE = "Pengantin Lelaki & Pengantin Perempuan";
+    const STRIP_BG = "#c97b84";   // strip background colour
+    const TEXT_COL = "#fff8f4";   // strip text colour
+    const COUNTDOWN_FROM = 3;
+
+    // Each layout describes: strip size, and where each photo slot goes.
+    // x, y = top-left corner of the slot. w, h = slot size (all in pixels).
+    // Want a 4-grid later? Just add a "4" entry here, no other code changes.
+    const LAYOUTS = {
+      "2": {
+        width: 1080, height: 1760,
+        slots: [
+          { x: 60, y: 60,  w: 960, h: 720 },   // 4:3 landscape
+          { x: 60, y: 820, w: 960, h: 720 },
+        ],
+      },
+      "3": {
+        width: 1080, height: 2280,
+        slots: [
+          { x: 60, y: 60,   w: 960, h: 640 },  // 3:2 landscape
+          { x: 60, y: 740,  w: 960, h: 640 },
+          { x: 60, y: 1420, w: 960, h: 640 },
+        ],
+      },
+    };
+
+    // =========================================================
+    //  Grab elements
+    // =========================================================
+    const video      = document.getElementById("camera");
+    const viewfinder = document.getElementById("viewfinder");
+    const countdown  = document.getElementById("countdown");
+    const flash      = document.getElementById("flash");
+    const statusText = document.getElementById("status");
+    const strip      = document.getElementById("strip");
+    const ctx        = strip.getContext("2d");
+
+    const startControls  = document.getElementById("startControls");
+    const shootControls  = document.getElementById("shootControls");
+    const reviewControls = document.getElementById("reviewControls");
+    const finalControls  = document.getElementById("finalControls");
+    const layoutPicker   = document.getElementById("layoutPicker");
+    const layoutBtns     = document.querySelectorAll(".layoutBtn");
+    const nextBtn        = document.getElementById("nextBtn");
+
+    // =========================================================
+    //  State = what's going on right now
+    // =========================================================
+    let layout  = LAYOUTS["2"];  // current layout
+    let shots   = [];            // one small canvas per slot (null = empty)
+    let current = 0;             // which slot we're filling (0, 1, 2...)
+
+    // =========================================================
+    //  Helpers
+    // =========================================================
+
+    // Show exactly ONE group of buttons and hide the others
+    function showControls(group) {
+      [startControls, shootControls, reviewControls, finalControls]
+        .forEach((g) => g.classList.add("hidden"));
+      group.classList.remove("hidden");
+    }
+
+    // A promise-based pause, so we can write: await wait(1000)
+    function wait(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    // Reset everything for a (new) layout
+    function resetSession() {
+      shots   = layout.slots.map(() => null);   // e.g. [null, null]
+      current = 0;
+
+      // Make the live preview the same shape as the slots
+      const s = layout.slots[0];
+      viewfinder.style.aspectRatio = s.w + " / " + s.h;
+
+      viewfinder.classList.remove("hidden");
+      layoutPicker.classList.remove("hidden");
+      strip.classList.remove("big");
+      drawStrip();
+    }
+
+    // Take a photo from the camera, cropped ("cover") to w x h, mirrored.
+    // Returns a small canvas holding just that one photo.
+    function capture(w, h) {
+      const shot = document.createElement("canvas");
+      shot.width  = w;
+      shot.height = h;
+      const sctx = shot.getContext("2d");
+
+      // Same cover-crop math as step 2
+      const camW  = video.videoWidth;
+      const camH  = video.videoHeight;
+      const scale = Math.max(w / camW, h / camH);
+      const drawW = camW * scale;
+      const drawH = camH * scale;
+
+      sctx.translate(w, 0);     // mirror
+      sctx.scale(-1, 1);
+      sctx.drawImage(video, (w - drawW) / 2, (h - drawH) / 2, drawW, drawH);
+      return shot;
+    }
+
+    // Redraw the whole strip: background, every slot, then the text
+    function drawStrip() {
+      strip.width  = layout.width;
+      strip.height = layout.height;
+
+      // 1. Background
+      ctx.fillStyle = STRIP_BG;
+      ctx.fillRect(0, 0, strip.width, strip.height);
+
+      // 2. Each slot: the photo if taken, otherwise a numbered placeholder
+      layout.slots.forEach((slot, i) => {
+        if (shots[i]) {
+          ctx.drawImage(shots[i], slot.x, slot.y, slot.w, slot.h);
+        } else {
+          ctx.fillStyle = "rgba(255,255,255,0.25)";
+          ctx.fillRect(slot.x, slot.y, slot.w, slot.h);
+          ctx.fillStyle = "rgba(255,255,255,0.8)";
+          ctx.font = "bold 160px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(i + 1, slot.x + slot.w / 2, slot.y + slot.h / 2);
+        }
+      });
+
+      // 3. Text at the bottom (below the last slot)
+      const last  = layout.slots[layout.slots.length - 1];
+      const textY = last.y + last.h;
+      const space = strip.height - textY;   // empty area at the bottom
+
+      ctx.fillStyle = TEXT_COL;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "bold 72px serif";
+      ctx.fillText(TITLE, strip.width / 2, textY + space * 0.42);
+      ctx.font = "34px sans-serif";
+      ctx.fillText(SUBTITLE, strip.width / 2, textY + space * 0.72);
+
+      // Later: to use a Canva design instead, draw your PNG here:
+      // ctx.drawImage(frameImg, 0, 0, strip.width, strip.height);
+    }
+
+    function updateStatus() {
+      statusText.textContent = "Shot " + (current + 1) + " of " + layout.slots.length;
+    }
+
+    // =========================================================
+    //  Button actions
+    // =========================================================
+
+    // Choose 2 grid / 3 grid
+    layoutBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        layoutBtns.forEach((b) => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        layout = LAYOUTS[btn.dataset.layout];
+        resetSession();
+        if (video.srcObject) {
+          updateStatus();
+          showControls(shootControls);
+        }
+      });
+    });
+
+    // Start camera
+    document.getElementById("startBtn").addEventListener("click", async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false,
+        });
+        video.srcObject = stream;
+        updateStatus();
+        showControls(shootControls);
+      } catch (error) {
+        alert("Couldn't open the camera: " + error.message);
+      }
+    });
+
+    // Snap: countdown -> flash -> photo goes into the current slot
+    document.getElementById("snapBtn").addEventListener("click", async () => {
+      shootControls.classList.add("hidden");   // no double-tapping
+      layoutPicker.classList.add("hidden");    // can't switch layout mid-shoot
+
+      // 3... 2... 1...
+      countdown.style.display = "flex";
+      for (let n = COUNTDOWN_FROM; n > 0; n--) {
+        countdown.textContent = n;
+        await wait(1000);
+      }
+      countdown.style.display = "none";
+
+      // Take the photo, sized for this slot
+      const slot = layout.slots[current];
+      shots[current] = capture(slot.w, slot.h);
+
+      // Flash effect: turn white instantly, then fade out
+      flash.style.transition = "none";
+      flash.style.opacity = 1;
+      requestAnimationFrame(() => {
+        flash.style.transition = "opacity 0.3s";
+        flash.style.opacity = 0;
+      });
+
+      drawStrip();
+
+      // Last slot? The Next button says "Done" instead
+      const isLast = current === layout.slots.length - 1;
+      nextBtn.textContent = isLast ? "Done ✓" : "Next ➜";
+      statusText.textContent = "Happy with shot " + (current + 1) + "?";
+      showControls(reviewControls);
+    });
+
+    // Retake: clear this slot and shoot it again
+    document.getElementById("retakeBtn").addEventListener("click", () => {
+      shots[current] = null;
+      drawStrip();
+      updateStatus();
+      showControls(shootControls);
+    });
+
+    // Next: move to the next slot, or finish if that was the last one
+    nextBtn.addEventListener("click", () => {
+      if (current < layout.slots.length - 1) {
+        current++;
+        updateStatus();
+        showControls(shootControls);
+      } else {
+        // All done: hide the camera, show the finished strip big
+        viewfinder.classList.add("hidden");
+        strip.classList.add("big");
+        statusText.textContent = "Your photo strip is ready!";
+        showControls(finalControls);
+      }
+    });
+
+    // Start over: wipe all shots, same layout
+    document.getElementById("restartBtn").addEventListener("click", () => {
+      resetSession();
+      updateStatus();
+      showControls(shootControls);
+    });
+
+    // Proceed: for now, download the strip.
+    // (Next steps: upload to Google Drive here.)
+    document.getElementById("proceedBtn").addEventListener("click", () => {
+      const link = document.createElement("a");
+      link.download = "wedding-photo-" + Date.now() + ".jpg";
+      link.href = strip.toDataURL("image/jpeg", 0.9);
+      link.click();
+    });
+
+    // Draw the empty strip when the page first loads
+    resetSession();
+  </script>
+
+</body>
+</html>

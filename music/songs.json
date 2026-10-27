@@ -1,0 +1,34 @@
+{
+  "songs": [
+    {
+      "src": "music/Alex Warren - Ordinary (Wedding Version) [Official Music Video].mp3",
+      "bytes": 4490899,
+      "duration": 187,
+      "highlights": [
+        40,
+        56
+      ]
+    },
+    {
+      "src": "music/Kembali Pulang.mp3",
+      "bytes": 4991823,
+      "duration": 208,
+      "highlights": [
+        120,
+        161
+      ]
+    },
+    {
+      "src": "music/[Playlist] POV You play this playlist on your wedding.mp3",
+      "bytes": 11462783,
+      "duration": 764,
+      "highlights": [
+        194,
+        234,
+        577,
+        644,
+        732
+      ]
+    }
+  ]
+}

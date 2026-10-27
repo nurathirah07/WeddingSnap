@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Wedding Snap · Admin</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin">
+
+  <header class="adminHead">
+    <div>
+      <p class="eyebrow">Wedding Snap</p>
+      <h1 class="display">Admin</h1>
+    </div>
+    <a class="btn ghost small" href="./" target="_blank">Open app ↗</a>
+  </header>
+
+  <!-- ============ Connect to GitHub ============ -->
+  <section class="card" id="connectCard">
+    <h2>Connect</h2>
+    <p class="muted">
+      Songs and frames are saved to the GitHub repo that hosts this site.
+      GitHub then scans them (chorus + photo windows) and updates the app automatically.
+    </p>
+    <label class="field">
+      <span>Repository</span>
+      <input id="repoInput" placeholder="username/WeddingSnap" autocomplete="off">
+    </label>
+    <label class="field">
+      <span>GitHub token</span>
+      <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
+    </label>
+    <label class="check"><input type="checkbox" id="rememberInput" checked> Remember on this device</label>
+    <div class="row left">
+      <button class="btn primary" id="connectBtn">Connect</button>
+    </div>
+    <p class="error" id="connectError"></p>
+
+    <details class="help">
+      <summary>How do I get a token?</summary>
+      <ol>
+        <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank">GitHub → Fine-grained token</a>.</li>
+        <li><b>Expiration:</b> a date after the wedding.</li>
+        <li><b>Repository access:</b> Only select repositories → your WeddingSnap repo.</li>
+        <li><b>Permissions:</b> Contents → <i>Read and write</i>, Actions → <i>Read-only</i>.</li>
+        <li>Generate, copy and paste it above. Keep it secret - it's like a password.</li>
+      </ol>
+    </details>
+  </section>
+
+  <!-- ============ Library (after connecting) ============ -->
+  <div id="library" class="hidden">
+    <div class="connected">
+      <span>Connected to <b id="repoName"></b></span>
+      <button class="btn link" id="disconnectBtn">Disconnect</button>
+    </div>
+
+    <section class="card">
+      <div class="cardHead">
+        <h2>Music</h2>
+        <label class="btn primary small">
+          + Add songs
+          <input type="file" id="addSongs" accept=".mp3,audio/mpeg" multiple hidden>
+        </label>
+      </div>
+      <p class="muted">MP3 only. The chorus is found automatically after you publish.</p>
+      <div class="dropZone" data-kind="song">Drop mp3 files here</div>
+      <ul class="songList" id="songList"></ul>
+    </section>
+
+    <section class="card">
+      <div class="cardHead">
+        <h2>Frames</h2>
+        <label class="btn primary small">
+          + Add frames
+          <input type="file" id="addFrames" accept=".png,image/png" multiple hidden>
+        </label>
+      </div>
+      <p class="muted">PNG from Canva. Pink boxes show where the photos will go.</p>
+      <div class="dropZone" data-kind="frame">Drop png files here</div>
+      <div class="frameGrid" id="frameGrid"></div>
+    </section>
+  </div>
+
+  <!-- ============ Pending changes ============ -->
+  <div class="publishBar hidden" id="publishBar">
+    <div>
+      <b id="pendingCount"></b>
+      <small id="publishStatus">Not live yet - press Publish</small>
+    </div>
+    <div class="row">
+      <button class="btn ghost small" id="discardBtn">Discard</button>
+      <button class="btn primary" id="publishBtn">Publish</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="js/config.js"></script>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>
