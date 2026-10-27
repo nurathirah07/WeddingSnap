@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Makes the page fit phone screens properly -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wedding Cam - Step 1</title>
+
+</head>
+<body>
+
+  <h2>Wedding Cam</h2>
+
+  <!-- Live camera preview.
+       autoplay    = start playing as soon as the stream arrives
+       playsinline = REQUIRED on iPhone, otherwise it opens fullscreen
+       muted       = no audio needed -->
+  <video id="camera" autoplay playsinline muted></video>
+
+  <br>
+  <button id="startBtn">Start Camera</button>
+  <button id="snapBtn">Snap</button>
+
+  <!-- The captured photo gets drawn here -->
+  <canvas id="photo"></canvas>
+
+  <script>
+    // 1. Grab the HTML elements so JavaScript can control them
+    const video    = document.getElementById("camera");
+    const canvas   = document.getElementById("photo");
+    const startBtn = document.getElementById("startBtn");
+    const snapBtn  = document.getElementById("snapBtn");
+
+    // getContext("2d") gives us the "paintbrush" for drawing on the canvas
+    const ctx = canvas.getContext("2d");
+
+    // 2. Start the camera when the button is pressed.
+    //    (Phones, especially iPhone, prefer camera requests to come
+    //    from a user tap rather than on page load.)
+    startBtn.addEventListener("click", async () => {
+      try {
+        // Ask the browser for camera access.
+        // facingMode "user" = front camera, "environment" = back camera
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false
+        });
+
+        // Send the camera stream into the <video> element
+        video.srcObject = stream;
+      } catch (error) {
+        // Common reasons: user tapped "Block", or page isn't on HTTPS/localhost
+        alert("Couldn't open the camera: " + error.message);
+        console.error(error);
+      }
+    });
+
+    // 3. Take a photo when Snap is pressed
+    snapBtn.addEventListener("click", () => {
+      // Make sure the camera is actually running first
+      if (!video.srcObject) {
+        alert("Start the camera first!");
+        return;
+      }
+
+      // Match the canvas size to the real camera resolution
+      // (videoWidth/videoHeight = actual pixels, not the on-screen size)
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // Mirror the photo so it matches what the guest saw in the preview.
+      // save() remembers the normal state, restore() puts it back after.
+      ctx.save();
+      ctx.translate(canvas.width, 0); // move to the right edge
+      ctx.scale(-1, 1);               // flip horizontally
+
+      // Copy the current video frame onto the canvas = the "photo"
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      ctx.restore();
+
+      // Show the canvas now that it has a photo
+      canvas.style.display = "inline-block";
+    });
+  </script>
+
+</body>
+</html>
