@@ -455,8 +455,16 @@ const Sound = (() => {
     });
   }
 
+  // True when the browser lets this page play sound before any tap.
+  // Some computers allow it; phones never do.
+  function canAutoplay() {
+    if (navigator.getAutoplayPolicy) return navigator.getAutoplayPolicy("mediaelement") === "allowed";
+    unlock();
+    return ac.state === "running";
+  }
+
   return {
-    unlock, beep, shutter, duck,
+    unlock, beep, shutter, duck, canAutoplay,
     get playing() { return playing; },
     toggle() { playing ? stopMusic() : startMusic(); return playing; },
   };

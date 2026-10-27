@@ -62,6 +62,37 @@
       <button class="btn link" id="disconnectBtn">Disconnect</button>
     </div>
 
+    <section class="card" id="detailsCard">
+      <h2>Wedding details</h2>
+      <p class="muted">Shown on the welcome cover and home page, and printed on every photo.</p>
+      <div class="detailsGrid">
+        <div>
+          <label class="field">
+            <span>Title</span>
+            <input id="setTitle" maxlength="40" placeholder="Walimatul Urus">
+          </label>
+          <label class="field">
+            <span>Couple's names</span>
+            <input id="setCouple" maxlength="80" placeholder="Aisyah &amp; Hakim">
+            <small class="hint">Put <b>&amp;</b> between the names - their first letters become the monogram on the record.</small>
+          </label>
+          <label class="field">
+            <span>Date</span>
+            <input id="setDate" maxlength="40" placeholder="12 . 12 . 2026">
+          </label>
+          <p class="error" id="detailsError"></p>
+        </div>
+        <!-- how the bottom of a photo will look -->
+        <div class="detailsPreview" aria-hidden="true">
+          <div class="pvPhoto"></div>
+          <b id="pvTitle"></b>
+          <i></i>
+          <span id="pvCouple"></span>
+          <small id="pvDate"></small>
+        </div>
+      </div>
+    </section>
+
     <section class="card">
       <div class="cardHead">
         <h2>Music</h2>

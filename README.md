@@ -46,9 +46,10 @@ Edit `js/config.js` and set `TITLE`, `COUPLE` and `DATE`.
 Open `https://<username>.github.io/<repo>/admin.html`. It isn't linked from the app, and it can't do anything without a token.
 
 1. **Connect:** paste a GitHub token. The page explains how to make one: a fine-grained token for this repo only, with **Contents: Read and write** and **Actions: Read-only**. Give it an expiry date after the wedding.
-2. **Add songs:** add mp3s, listen to them and remove old ones. Each song shows its chorus times with ▶ buttons.
-3. **Add frames:** add PNGs. Pink boxes appear right away to show where the photos will go, along with the layout. If a frame has no photo area, it's flagged and skipped.
-4. **Publish:** all changes go to GitHub in one commit. The Action then finds the choruses and photo windows and republishes the app. The page shows progress until it says **Live ✓**, which takes about 1–2 minutes.
+2. **Wedding details:** edit the title, the couple's names and the date. A preview shows how the bottom of a photo will look. They appear on the welcome cover, the home page and the record sleeve, and are printed on every photo. They're saved in `settings.json`, which overrides the defaults in `js/config.js`.
+3. **Add songs:** add mp3s, listen to them and remove old ones. Each song shows its chorus times with ▶ buttons.
+4. **Add frames:** add PNGs. Pink boxes appear right away to show where the photos will go, along with the layout. If a frame has no photo area, it's flagged and skipped.
+5. **Publish:** all changes go to GitHub in one commit. The Action then finds the choruses and photo windows and republishes the app. The page shows progress until it says **Live ✓**, which takes about 1–2 minutes.
 
 The token is saved only in that browser (untick "Remember" to forget it when the tab closes). Treat it like a password, and delete it on GitHub after the wedding.
 
@@ -87,7 +88,7 @@ To add a song, put the mp3 in `music/` and push to GitHub. That's all.
 
 How it plays:
 
-- **Start:** music starts on the guest's first tap. Browsers never allow sound before the user touches the page, so this is as early as possible. If a guest turns it off, it stays off for them next time.
+- **Start:** music plays as soon as the app opens wherever the browser allows it. Phones only allow sound after a tap, so there a welcome cover with the couple's names says "Tap to open", and that tap starts the music. If a guest turns music off, it stays off for them next time (and the cover is skipped).
 - **Order and repeat:** every chorus clip plays once in random order, then the list reshuffles and repeats. It avoids playing the same song twice in a row whenever the mix of songs allows.
 - **Transitions:** each change uses a random DJ transition: `crossfade`, `sweep` (a muffled filter sweep), `echo` (the song echoes away) or `tapestop` (the song slows down like a record). Choose which ones are used in `CONFIG.MUSIC.TRANSITIONS`.
 

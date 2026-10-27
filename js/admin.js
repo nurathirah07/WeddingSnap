@@ -13,6 +13,9 @@ const REPO_KEY  = "weddingsnap.admin.repo";
 let repo = "", token = "", branch = "main";
 let songs = [];    // { name, path, size, info, status: "live" | "new" | "delete", file }
 let frames = [];   // { name, path, size, info, status, file, preview }
+// Wedding details: what's saved in settings.json, and what's in the boxes now
+let liveDetails = { title: "", couple: "", date: "" };
+const DETAIL_INPUTS = { title: "setTitle", couple: "setCouple", date: "setDate" };
 const player = new Audio();
 
 // =========================================================
@@ -162,6 +165,7 @@ async function loadLibrary() {
   const [songFiles, frameFiles, songInfo, frameInfo] = await Promise.all([
     listFolder("music"), listFolder("frames"),
     liveJson("music/songs.json", "songs"), liveJson("frames/frames.json", "frames"),
+    loadDetails(),
   ]);
 
   songs = songFiles.filter((f) => /\.mp3$/i.test(f.name)).map((f) => ({
@@ -174,6 +178,56 @@ async function loadLibrary() {
   }));
   render();
 }
+
+// =========================================================
+//  Wedding details (settings.json in the repo)
+// =========================================================
+async function loadDetails() {
+  let saved = {};
+  try {
+    const file = await gh(`/contents/settings.json?ref=${branch}`);
+    const bytes = Uint8Array.from(atob(file.content.replace(/\n/g, "")), (c) => c.charCodeAt(0));
+    saved = JSON.parse(new TextDecoder().decode(bytes));   // UTF-8 safe (é, emoji, Jawi…)
+  } catch (e) {
+    if (e.status !== 404) console.warn(e);   // 404 = never saved: use config.js
+  }
+  liveDetails = {
+    title: saved.title || CONFIG.TITLE,
+    couple: saved.couple || CONFIG.COUPLE,
+    date: saved.date || CONFIG.DATE,
+  };
+  Object.entries(DETAIL_INPUTS).forEach(([key, id]) => { $(id).value = liveDetails[key]; });
+  renderDetails();
+}
+
+function currentDetails() {
+  const d = {};
+  Object.entries(DETAIL_INPUTS).forEach(([key, id]) => { d[key] = $(id).value.trim(); });
+  return d;
+}
+
+function detailsProblem() {
+  const d = currentDetails();
+  return !d.title ? "Fill in the title." : !d.couple ? "Fill in the couple's names." : "";
+}
+
+function detailsChanged() {
+  const d = currentDetails();
+  return !detailsProblem() && Object.keys(d).some((k) => d[k] !== liveDetails[k]);
+}
+
+function renderDetails() {
+  const d = currentDetails();
+  $("pvTitle").textContent = d.title;
+  $("pvCouple").textContent = d.couple;
+  $("pvDate").textContent = d.date;
+  $("detailsError").textContent = detailsProblem();
+}
+
+Object.values(DETAIL_INPUTS).forEach((id) => $(id).addEventListener("input", () => {
+  renderDetails();
+  renderBar();
+}));
 
 // =========================================================
 //  Adding files
@@ -383,6 +437,7 @@ function drawFrameThumb(canvas, frame, geo) {
 function pendingChanges() {
   const all = [...songs, ...frames];
   return {
+    details: detailsChanged(),
     adds: all.filter((x) => x.status === "new" && !(x.preview && !x.preview.slots.length)),
     deletes: all.filter((x) => x.status === "delete"),
     broken: frames.filter((f) => f.status === "new" && f.preview && !f.preview.slots.length),
@@ -390,10 +445,11 @@ function pendingChanges() {
 }
 
 function renderBar() {
-  const { adds, deletes, broken } = pendingChanges();
-  const n = adds.length + deletes.length;
+  const { details, adds, deletes, broken } = pendingChanges();
+  const n = adds.length + deletes.length + (details ? 1 : 0);
   $("publishBar").classList.toggle("hidden", !n && !broken.length);
   const parts = [];
+  if (details) parts.push("Wedding details changed");
   if (adds.length) parts.push(adds.length + " to add");
   if (deletes.length) parts.push(deletes.length + " to remove");
   $("pendingCount").textContent = parts.join(" · ") || "Nothing to publish";
@@ -409,12 +465,13 @@ $("discardBtn").addEventListener("click", () => {
 });
 
 window.addEventListener("beforeunload", (e) => {
-  const { adds, deletes } = pendingChanges();
-  if (adds.length || deletes.length) e.preventDefault();
+  const { details, adds, deletes } = pendingChanges();
+  if (details || adds.length || deletes.length) e.preventDefault();
 });
 
 $("publishBtn").addEventListener("click", async () => {
-  const { adds, deletes } = pendingChanges();
+  const { details, adds, deletes } = pendingChanges();
+  const newDetails = currentDetails();
   const status = $("publishStatus");
   $("publishBtn").disabled = true;
   $("discardBtn").disabled = true;
@@ -435,11 +492,16 @@ $("publishBtn").addEventListener("click", async () => {
       tree.push({ path: adds[i].path, mode: "100644", type: "blob", sha: blob.sha });
     }
     deletes.forEach((d) => tree.push({ path: d.path, mode: "100644", type: "blob", sha: null }));
+    if (details) {
+      tree.push({ path: "settings.json", mode: "100644", type: "blob",
+                  content: JSON.stringify(newDetails, null, 2) + "\n" });
+    }
 
     // 3. One commit with everything, then move the branch to it
     status.textContent = "Saving…";
     const newTree = await gh("/git/trees", { method: "POST", body: JSON.stringify({ base_tree: head.tree.sha, tree }) });
     const parts = [];
+    if (details) parts.push("update wedding details");
     if (adds.length) parts.push("add " + adds.map((a) => a.name).join(", "));
     if (deletes.length) parts.push("remove " + deletes.map((d) => d.name).join(", "));
     const commit = await gh("/git/commits", {
@@ -449,6 +511,7 @@ $("publishBtn").addEventListener("click", async () => {
     await gh(`/git/refs/heads/${branch}`, { method: "PATCH", body: JSON.stringify({ sha: commit.sha }) });
 
     // Saved. Show it as "processing" until the site is rebuilt.
+    if (details) liveDetails = newDetails;
     songs = songs.filter((s) => s.status !== "delete");
     frames = frames.filter((f) => f.status !== "delete");
     [...songs, ...frames].forEach((x) => {
@@ -484,7 +547,7 @@ async function watchDeploy(sha) {
       status.textContent = "Finding choruses + photo areas, publishing…";
     } else if (run.conclusion === "success") {
       $("pendingCount").textContent = "Live ✓";
-      status.textContent = "Guests get the new songs and frames next time they open the app.";
+      status.textContent = "Guests see the changes next time they open the app.";
       toast("Published!");
       setTimeout(() => loadLibrary(), 6000);   // refresh chorus times + photo areas
       return;

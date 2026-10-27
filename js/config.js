@@ -2,7 +2,8 @@
 //  SETTINGS - change these for your sister's wedding
 // =========================================================
 const CONFIG = {
-  // Text printed on every photo
+  // Text printed on every photo. These are only the defaults: whatever
+  // you save under "Wedding details" on the admin page (settings.json) wins.
   TITLE:    "Walimatul Urus",
   COUPLE:   "Pengantin Lelaki & Pengantin Perempuan",
   DATE:     "dd . mm . yyyy",

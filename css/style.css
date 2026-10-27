@@ -156,6 +156,65 @@ body:has(#home.active) .musicBtn,
 body:has(#booth.active) .musicBtn,
 body:has(#edit.active) .musicBtn { display: none; }
 
+/* Names / date fade in once settings.json has loaded */
+.detail { transition: opacity 0.4s; }
+body:not(.detailsReady) .detail { opacity: 0; }
+
+/* ---------- Welcome cover ---------- */
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(248, 241, 238, 0.3);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: opacity 0.6s, transform 0.6s;
+}
+.intro.leaving { opacity: 0; transform: scale(1.05); pointer-events: none; }
+.introCard {
+  width: min(100%, 360px);
+  padding: 40px 26px 30px;
+  border-radius: 28px;
+  text-align: center;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(18px) saturate(1.3);
+  border: 1px solid var(--glass-line);
+  box-shadow: 0 24px 60px rgba(74, 40, 48, 0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: fadeIn 0.8s ease;
+}
+.introCard .display { font-size: clamp(40px, 12vw, 54px); }
+.introRecord {
+  width: 132px; height: 132px;
+  margin: 16px 0 8px;
+  border-radius: 50%;
+  background: url("vinyl.webp") center / cover;
+  box-shadow: 0 12px 30px rgba(42, 31, 34, 0.3);
+  animation: spin 6s linear infinite;
+}
+.introCouple { margin: 0; font-family: var(--serif); font-style: italic; font-size: 22px; line-height: 1.2; }
+.introDate { margin: 0; font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted); }
+.introTap {
+  margin-top: 18px;
+  padding: 13px 28px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: 0 8px 22px rgba(42, 31, 34, 0.22);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+@keyframes breathe { 50% { transform: scale(1.05); } }
+@media (prefers-reduced-motion: reduce) { .introRecord, .introTap { animation: none; } }
+
 /* ---------- 1. Home ---------- */
 .home-inner {
   flex: 1;
@@ -685,6 +744,7 @@ body.musicOn #npState::before {
   border-radius: 22px;
 }
 .galleryMsg:empty { display: none; }
+.galleryMsg.count { margin: 14px 0 0; padding: 0; border: none; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; font-size: 12px; letter-spacing: 0.08em; }
 
 .masonry { columns: 2; column-gap: 10px; margin-top: 14px; }
 .tile {
@@ -702,6 +762,20 @@ body.musicOn #npState::before {
   box-shadow: 0 6px 18px rgba(74, 40, 48, 0.12);
 }
 .tile img { width: 100%; display: block; }
+/* little "expand" badge so guests know a photo can be opened */
+.tile::before {
+  content: "⤢";
+  position: absolute;
+  right: 8px; bottom: 8px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 13px;
+  color: #fff;
+  background: rgba(17, 14, 15, 0.45);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
 .tile.mine::after {
   content: "Mine";
   position: absolute;
@@ -716,17 +790,56 @@ body.musicOn #npState::before {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(17, 14, 15, 0.94);
+  background: rgba(17, 14, 15, 0.97);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 20px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
   animation: fadeIn 0.25s;
 }
-.lightbox img { max-width: 100%; max-height: 72vh; border-radius: 4px; }
-.lightbox .close { position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px; color: #fff; background: rgba(255, 255, 255, 0.12); border-color: transparent; }
+.lbTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+}
+.lightbox .iconBtn { color: #fff; background: rgba(255, 255, 255, 0.12); border-color: transparent; box-shadow: none; }
+.lbStage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 0;
+}
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 4px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  transition: filter 0.3s;
+}
+.lightbox img.loading { filter: blur(2px); }
+.lbNav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px; height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(17, 14, 15, 0.45);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  padding-bottom: 3px;
+}
+#lbPrev { left: 4px; }
+#lbNext { right: 4px; }
+body:has(#lightbox:not(.hidden)) .musicBtn { display: none; }
 .lightbox .btn.primary { background: #fff; color: var(--ink); }
 
 /* ---------- Toast (top of the screen, out of the way of buttons) ---------- */

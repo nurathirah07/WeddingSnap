@@ -126,9 +126,21 @@ const framesReady = fetch("frames/frames.json", { cache: "no-cache" })
   }))
   .catch(() => console.warn("No frames/frames.json - only built-in frames"));
 
-// Fonts + frame images must be loaded before drawing on canvas
+// Wedding details saved from the admin page (settings.json) replace the
+// defaults in config.js - on the home page and on every photo
+const settingsReady = fetch("settings.json", { cache: "no-cache" })
+  .then((res) => (res.ok ? res.json() : {}))
+  .then((s) => ["TITLE", "COUPLE", "DATE"].forEach((key) => {
+    const value = s[key.toLowerCase()];
+    if (typeof value === "string" && value.trim()) CONFIG[key] = value.trim();
+  }))
+  .catch(() => console.warn("No settings.json - using config.js"))
+  .then(showDetails);
+
+// Fonts, details + frame images must be loaded before drawing on canvas
 const frameImages = {};
 const ready = Promise.all([
+  settingsReady,
   document.fonts.load('italic 500 80px "Cormorant Garamond"'),
   document.fonts.load('500 30px "DM Sans"'),
   framesReady.then(() => Promise.all(FRAMES.filter((f) => f.type === "png").map((f) => new Promise((resolve) => {
@@ -142,13 +154,16 @@ const ready = Promise.all([
 // =========================================================
 //  1. HOME
 // =========================================================
-$("homeTitle").textContent  = CONFIG.TITLE;
-$("homeCouple").textContent = CONFIG.COUPLE;
-$("sleeveDate").textContent = CONFIG.DATE;
+function showDetails() {
+  $("homeTitle").textContent  = $("introTitle").textContent  = CONFIG.TITLE;
+  $("homeCouple").textContent = $("introCouple").textContent = CONFIG.COUPLE;
+  $("sleeveDate").textContent = $("introDate").textContent   = CONFIG.DATE;
 
-// Monogram on the CD: first letter of each name, e.g. "Aisyah & Hakim" -> "A&H"
-const monogram = CONFIG.COUPLE.split("&").map((n) => n.trim().charAt(0).toUpperCase()).join("&");
-document.querySelectorAll(".cdMono").forEach((el) => { el.textContent = monogram; });
+  // Monogram on the record: first letter of each name, e.g. "Aisyah & Hakim" -> "A&H"
+  const monogram = CONFIG.COUPLE.split("&").map((n) => n.trim().charAt(0).toUpperCase()).join("&");
+  document.querySelectorAll(".cdMono").forEach((el) => { el.textContent = monogram; });
+  document.body.classList.add("detailsReady");   // fade the text in (no flash of old names)
+}
 
 $("homeStart").addEventListener("click", () => show("layout"));
 $("homeGallery").addEventListener("click", () => show("gallery"));
@@ -166,6 +181,20 @@ function firstTap(e) {
   if (localStorage.getItem(MUSIC_PREF) !== "off" && !Sound.playing) setMusicUI(Sound.toggle());
 }
 FIRST_TAP.forEach((t) => document.addEventListener(t, firstTap, true));
+
+// Music the moment the app opens. If the browser blocks sound until the
+// first tap (all phones do), show the welcome cover so that tap comes first.
+if (localStorage.getItem(MUSIC_PREF) !== "off") {
+  if (Sound.canAutoplay()) setMusicUI(Sound.toggle());
+  else $("intro").classList.remove("hidden");
+}
+function closeIntro() {
+  // firstTap (above) has already started the music by now
+  $("intro").classList.add("leaving");
+  setTimeout(() => $("intro").classList.add("hidden"), 700);
+}
+$("intro").addEventListener("click", closeIntro);
+$("intro").addEventListener("keydown", closeIntro);
 
 // body.musicOn makes the CDs spin (see style.css)
 function setMusicUI(on) {
@@ -742,6 +771,7 @@ $("againBtn").addEventListener("click", () => {
 //  6. GALLERY
 // =========================================================
 let galleryPhotos = [];
+let galleryList = [];   // the photos showing right now (Everyone or Mine)
 let galleryTab = "all";
 const thumbUrl = (id, size) => `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
 
@@ -768,13 +798,15 @@ async function loadGallery() {
 function renderGallery() {
   const mine = Mine.all();
   const list = galleryTab === "mine" ? galleryPhotos.filter((p) => mine[p.id]) : galleryPhotos;
+  galleryList = list;
+  $("galleryMsg").classList.toggle("count", list.length > 0);   // plain text, not a card
   $("galleryMsg").textContent = list.length
     ? list.length + (list.length === 1 ? " photo" : " photos")
     : galleryTab === "mine" ? "You haven't uploaded any photos yet." : "No photos yet. Be the first! 📸";
 
   const grid = $("galleryGrid");
   grid.innerHTML = "";
-  list.forEach((p) => {
+  list.forEach((p, i) => {
     const item = document.createElement("button");
     item.className = "tile" + (mine[p.id] ? " mine" : "");
     const img = document.createElement("img");
@@ -782,7 +814,8 @@ function renderGallery() {
     img.src = thumbUrl(p.id, 500);
     img.alt = "";
     item.appendChild(img);
-    item.addEventListener("click", () => openLightbox(p));
+    item.setAttribute("aria-label", "View photo " + (i + 1));
+    item.addEventListener("click", () => openLightbox(i));
     grid.appendChild(item);
   });
 }
@@ -794,15 +827,78 @@ document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click",
 }));
 $("refreshBtn").addEventListener("click", loadGallery);
 
-// ---------- Lightbox ----------
+// ---------- Lightbox (full-screen viewer) ----------
 let lbPhoto = null;
-function openLightbox(p) {
-  lbPhoto = p;
-  $("lbImg").src = thumbUrl(p.id, 1600);
-  $("lbDelete").classList.toggle("hidden", !Mine.token(p.id));
-  $("lightbox").classList.remove("hidden");
+let lbIndex = 0;
+const lb = $("lightbox");
+const lbOpen = () => !lb.classList.contains("hidden");
+
+function openLightbox(i) {
+  // An entry in the history, so the phone's Back button closes the viewer
+  // instead of leaving the app
+  if (!lbOpen()) history.pushState({ lightbox: true }, "");
+  lb.classList.remove("hidden");
+  showPhoto(i);
 }
-$("lbClose").addEventListener("click", () => $("lightbox").classList.add("hidden"));
+
+function showPhoto(i) {
+  const n = galleryList.length;
+  if (!n) return closeLightbox();
+  lbIndex = (i + n) % n;
+  lbPhoto = galleryList[lbIndex];
+
+  // Show the small picture the gallery already loaded straight away,
+  // then swap in the sharp one once it has downloaded
+  const img = $("lbImg");
+  const id = lbPhoto.id;
+  img.src = thumbUrl(id, 500);
+  img.classList.add("loading");
+  const big = new Image();
+  big.onload = () => {
+    if (lbPhoto && lbPhoto.id === id) { img.src = big.src; img.classList.remove("loading"); }
+  };
+  big.src = thumbUrl(id, 1600);
+  // Preload the neighbours so swiping feels instant
+  if (n > 1) [lbIndex + 1, lbIndex - 1].forEach((j) => { new Image().src = thumbUrl(galleryList[(j + n) % n].id, 1600); });
+
+  $("lbCount").textContent = n > 1 ? `${lbIndex + 1} / ${n}` : "";
+  $("lbPrev").classList.toggle("hidden", n < 2);
+  $("lbNext").classList.toggle("hidden", n < 2);
+  $("lbDelete").classList.toggle("hidden", !Mine.token(id));
+}
+
+function closeLightbox() {
+  if (history.state && history.state.lightbox) history.back();   // popstate hides it
+  else lb.classList.add("hidden");
+}
+window.addEventListener("popstate", () => lb.classList.add("hidden"));
+
+$("lbClose").addEventListener("click", closeLightbox);
+$("lbPrev").addEventListener("click", () => showPhoto(lbIndex - 1));
+$("lbNext").addEventListener("click", () => showPhoto(lbIndex + 1));
+// Tap the dark area around the photo to close
+lb.addEventListener("click", (e) => { if (e.target === lb || e.target === $("lbStage")) closeLightbox(); });
+
+// Swipe left / right
+let swipeX = null, swipeY = null;
+$("lbStage").addEventListener("touchstart", (e) => {
+  swipeX = e.touches[0].clientX;
+  swipeY = e.touches[0].clientY;
+}, { passive: true });
+$("lbStage").addEventListener("touchend", (e) => {
+  if (swipeX === null) return;
+  const dx = e.changedTouches[0].clientX - swipeX;
+  const dy = e.changedTouches[0].clientY - swipeY;
+  swipeX = null;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) showPhoto(lbIndex + (dx < 0 ? 1 : -1));
+});
+
+document.addEventListener("keydown", (e) => {
+  if (!lbOpen()) return;
+  if (e.key === "ArrowRight") showPhoto(lbIndex + 1);
+  if (e.key === "ArrowLeft") showPhoto(lbIndex - 1);
+  if (e.key === "Escape") closeLightbox();
+});
 
 // Drive images can't be read by our page (CORS), so open the download link
 $("lbSave").addEventListener("click", () => {
@@ -820,7 +916,7 @@ $("lbDelete").addEventListener("click", async () => {
     if (!data.ok) throw new Error(data.error);
     Mine.remove(lbPhoto.id);
     galleryPhotos = galleryPhotos.filter((p) => p.id !== lbPhoto.id);
-    $("lightbox").classList.add("hidden");
+    closeLightbox();
     renderGallery();
     toast("Photo deleted");
   } catch (err) {

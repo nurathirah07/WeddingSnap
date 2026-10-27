@@ -21,12 +21,25 @@
     <span class="miniCd"></span>
   </button>
 
+  <!-- Welcome cover. Phones only allow music after the first tap, so this
+       invites that tap (hidden when the browser allows autoplay) -->
+  <div class="intro hidden" id="intro" role="button" tabindex="0" aria-label="Open the photobooth">
+    <div class="introCard">
+      <p class="eyebrow">Welcome to our</p>
+      <h1 class="display detail" id="introTitle"></h1>
+      <span class="introRecord" aria-hidden="true"></span>
+      <p class="introCouple detail" id="introCouple"></p>
+      <p class="introDate detail" id="introDate"></p>
+      <span class="introTap">Tap to open&nbsp;&nbsp;♪</span>
+    </div>
+  </div>
+
   <!-- ===================== 1. HOME ===================== -->
   <section class="screen active" id="home">
     <div class="home-inner">
       <p class="eyebrow">Welcome to our</p>
-      <h1 class="display" id="homeTitle">Walimatul Urus</h1>
-      <p class="couple" id="homeCouple"></p>
+      <h1 class="display detail" id="homeTitle"></h1>
+      <p class="couple detail" id="homeCouple"></p>
 
       <!-- CD sliding out of its sleeve; spins while the music plays. Tap = play / pause -->
       <button class="cdPlayer" id="cdPlayer" aria-label="Play or pause music">
@@ -35,7 +48,7 @@
         </span>
         <span class="sleeve" aria-hidden="true">
           <b class="cdMono"></b>
-          <small id="sleeveDate"></small>
+          <small class="detail" id="sleeveDate"></small>
         </span>
       </button>
       <p class="nowPlaying">
@@ -155,9 +168,17 @@
   </section>
 
   <!-- Lightbox for one gallery photo -->
+  <!-- Swipe left/right between photos; tap outside, ✕ or the phone's Back to close -->
   <div class="lightbox hidden" id="lightbox">
-    <button class="iconBtn close" id="lbClose" aria-label="Close">✕</button>
-    <img id="lbImg" alt="">
+    <div class="lbTop">
+      <span id="lbCount"></span>
+      <button class="iconBtn" id="lbClose" aria-label="Close">✕</button>
+    </div>
+    <div class="lbStage" id="lbStage">
+      <button class="lbNav" id="lbPrev" aria-label="Previous photo">‹</button>
+      <img id="lbImg" alt="">
+      <button class="lbNav" id="lbNext" aria-label="Next photo">›</button>
+    </div>
     <div class="row">
       <button class="btn primary" id="lbSave">Save</button>
       <button class="btn danger hidden" id="lbDelete">Delete my upload</button>
