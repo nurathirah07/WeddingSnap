@@ -72,10 +72,19 @@ async function listFolder(folder) {
   }
 }
 
-// What the live site currently knows (chorus times, photo windows)
+// What the live site currently knows (chorus times, photo windows).
+// Always ask the GitHub Pages site: the build only writes these files
+// there, so a local copy (localhost) is out of date.
+function liveSite() {
+  if (/\.github\.io$/.test(location.hostname)) return "";
+  const [owner, name] = repo.split("/");
+  const host = owner.toLowerCase() + ".github.io";
+  return name.toLowerCase() === host ? `https://${host}/` : `https://${host}/${name}/`;
+}
+
 async function liveJson(path, key) {
   try {
-    const res = await fetch(path, { cache: "no-cache" });
+    const res = await fetch(liveSite() + path, { cache: "no-cache" });
     return (await res.json())[key] || [];
   } catch (e) {
     return [];

@@ -1,6 +1,16 @@
 {
   "songs": [
     {
+      "src": "music/ARVIAN DWI - SATU SHAF DI BELAKANGKU (OFFICIAL LYRIC VIDEO).mp3",
+      "bytes": 8643742,
+      "duration": 360,
+      "highlights": [
+        198,
+        251,
+        294
+      ]
+    },
+    {
       "src": "music/Alex Warren - Ordinary (Wedding Version) [Official Music Video].mp3",
       "bytes": 4490899,
       "duration": 187,
@@ -25,6 +35,25 @@
       "highlights": [
         120,
         161
+      ]
+    },
+    {
+      "src": "music/Lelaki Ini Anuar Zain.mp3",
+      "bytes": 7419330,
+      "duration": 309,
+      "highlights": [
+        156,
+        199,
+        239
+      ]
+    },
+    {
+      "src": "music/Lelaki Teragung.mp3",
+      "bytes": 5653870,
+      "duration": 236,
+      "highlights": [
+        142,
+        182
       ]
     },
     {
