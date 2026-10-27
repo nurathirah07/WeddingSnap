@@ -216,7 +216,9 @@ const Sound = (() => {
       if (decks[active] !== oldDeck) { oldDeck.el.pause(); resetDeck(oldDeck); }
     }, (M.CROSSFADE + 2) * 1000);
 
-    window.dispatchEvent(new CustomEvent("songchange", { detail: songName(seg.song.src) }));
+    window.dispatchEvent(new CustomEvent("songchange", {
+      detail: { name: songName(seg.song.src), cover: seg.song.cover || null },
+    }));
 
     // When to start the next one
     const remaining = deck.el.duration - deck.el.currentTime;
@@ -355,6 +357,7 @@ const Sound = (() => {
     if (!echoIn) makeEcho();
     nextNoteTime = ac.currentTime + 0.1;
     melodyTimer = setInterval(scheduler, 100);
+    window.dispatchEvent(new CustomEvent("songchange", { detail: { name: "Music box", cover: null } }));
   }
 
   // =========================================================

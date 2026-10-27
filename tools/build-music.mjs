@@ -33,17 +33,31 @@ for (const file of files) {
     continue;
   }
   const bytes = fs.statSync(src).size;
+  const cover = findCover(file);
   const before = old.find((s) => s.src === src && s.bytes === bytes);
   if (before) {
     console.log(`✓ ${file} (unchanged)`);
-    songs.push(before);
+    songs.push(withCover(before, cover));
     continue;
   }
 
   const { loud, duration } = await measureLoudness(src);
   const highlights = findHighlights(loud, duration);
   console.log(`♪ ${file}  ${fmt(duration)}  highlights: ${highlights.map(fmt).join(", ")}`);
-  songs.push({ src, bytes, duration: Math.round(duration), highlights });
+  songs.push(withCover({ src, bytes, duration: Math.round(duration), highlights }, cover));
+}
+
+// Cover art for the spinning CD: an image with the same name as the song,
+// e.g. "Hari Ini.jpg" next to "Hari Ini.mp3"
+function findCover(file) {
+  const base = file.replace(/\.mp3$/i, "");
+  const ext = [".jpg", ".jpeg", ".png", ".webp"].find((e) => fs.existsSync(path.join(MUSIC_DIR, base + e)));
+  return ext ? MUSIC_DIR + "/" + base + ext : null;
+}
+
+function withCover(song, cover) {
+  const { cover: _, ...rest } = song;
+  return cover ? { ...rest, cover } : rest;
 }
 
 fs.writeFileSync(OUT_FILE, JSON.stringify({ songs }, null, 2) + "\n");

@@ -144,6 +144,11 @@ const ready = Promise.all([
 // =========================================================
 $("homeTitle").textContent  = CONFIG.TITLE;
 $("homeCouple").textContent = CONFIG.COUPLE;
+$("sleeveDate").textContent = CONFIG.DATE;
+
+// Monogram on the CD: first letter of each name, e.g. "Aisyah & Hakim" -> "A&H"
+const monogram = CONFIG.COUPLE.split("&").map((n) => n.trim().charAt(0).toUpperCase()).join("&");
+document.querySelectorAll(".cdMono").forEach((el) => { el.textContent = monogram; });
 
 $("homeStart").addEventListener("click", () => show("layout"));
 $("homeGallery").addEventListener("click", () => show("gallery"));
@@ -157,22 +162,34 @@ const FIRST_TAP = ["click", "keydown"];
 function firstTap(e) {
   FIRST_TAP.forEach((t) => document.removeEventListener(t, firstTap, true));
   Sound.unlock();
-  if (e.target.closest && e.target.closest("#musicBtn")) return;   // the button handles itself
-  if (localStorage.getItem(MUSIC_PREF) !== "off" && !Sound.playing) {
-    $("musicBtn").classList.toggle("on", Sound.toggle());
-  }
+  if (e.target.closest && e.target.closest("#musicBtn, #cdPlayer")) return;   // they handle themselves
+  if (localStorage.getItem(MUSIC_PREF) !== "off" && !Sound.playing) setMusicUI(Sound.toggle());
 }
 FIRST_TAP.forEach((t) => document.addEventListener(t, firstTap, true));
 
-$("musicBtn").addEventListener("click", () => {
+// body.musicOn makes the CDs spin (see style.css)
+function setMusicUI(on) {
+  document.body.classList.toggle("musicOn", on);
+  $("npState").textContent = on ? "Now playing" : "Tap the record for music";
+  if (!on) $("npTitle").innerHTML = "&nbsp;";
+}
+
+function toggleMusic() {
   const on = Sound.toggle();
   localStorage.setItem(MUSIC_PREF, on ? "on" : "off");
-  $("musicBtn").classList.toggle("on", on);
-});
+  setMusicUI(on);
+}
+$("musicBtn").addEventListener("click", toggleMusic);
+$("cdPlayer").addEventListener("click", toggleMusic);
 
-// "♪ Song name" when the music changes (not while posing in the booth)
+// New song: show its name under the CD, its cover art (music/<song>.jpg) on
+// the CD, and a "♪ Song" toast on other screens (not while posing in the booth)
 window.addEventListener("songchange", (e) => {
-  if (!$("booth").classList.contains("active")) toast("♪ " + e.detail);
+  const { name, cover } = e.detail;
+  $("npTitle").textContent = name;
+  document.body.style.setProperty("--cover", cover ? `url("${encodeURI(cover)}")` : "none");
+  document.body.classList.toggle("hasCover", !!cover);
+  if (!$("home").classList.contains("active") && !$("booth").classList.contains("active")) toast("♪ " + name);
 });
 
 // =========================================================

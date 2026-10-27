@@ -2,34 +2,60 @@
    Wedding Snap - modern photobooth
    ========================================================= */
 :root {
-  --bg: #f7f2ec;
-  --card: #fffdf9;
-  --ink: #1f1a17;
-  --muted: #8a7d74;
-  --line: #e6ddd3;
-  --accent: #c97b84;
-  --accent-dark: #a85f69;
-  --dark: #0f0d0c;
+  --bg: #f8f1ee;                          /* blush ivory (a colour, used for text on dark buttons too) */
+  --card: #fffaf7;
+  --glass: rgba(255, 250, 247, 0.74);     /* frosted cards over the curtain */
+  --glass-line: rgba(255, 255, 255, 0.7);
+  --ink: #2a1f22;
+  --muted: #76646a;
+  --line: rgba(42, 31, 34, 0.1);
+  --accent: #c27c88;
+  --accent-dark: #9e5966;
+  --dark: #110e0f;
+  --shadow: 0 10px 30px rgba(74, 40, 48, 0.12);
   --serif: "Cormorant Garamond", Georgia, serif;
   --sans: "DM Sans", system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-html, body {
-  margin: 0;
+/* Background lives on <html> only, so the curtain video (z-index -1) shows above it */
+html {
   /* still picture shows instantly / when the phone blocks video autoplay */
   background: var(--bg) url("background.jpg") center / cover fixed;
+}
+body {
+  margin: 0;
   color: var(--ink);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
 }
+html:has(#booth.active) { background: var(--dark); }
 
 button { font: inherit; color: inherit; cursor: pointer; }
 /* iPhone only sends taps on plain areas to JavaScript if they look clickable
    (needed so the music can start on the first tap anywhere) */
 @media (hover: none) { body { cursor: pointer; } }
 .hidden { display: none !important; }
+
+/* Moving curtain behind every screen (except the dark booth) */
+.bgVideo {
+  position: fixed; inset: 0; z-index: -1;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: 0.88;              /* lets the ivory through = softer, easier to read on */
+  pointer-events: none;
+}
+body:has(#booth.active) .bgVideo { display: none; }
+
+/* Frosted glass, shared by cards, buttons and bars */
+.glass,
+.layoutCard, .panel, .tabs, .galleryMsg, .uploadStatus, .iconBtn, .musicBtn {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid var(--glass-line);
+}
 
 /* ---------- Screens: only one visible at a time ---------- */
 .screen {
@@ -38,24 +64,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
   min-height: 100dvh;
   max-width: 520px;
   margin: 0 auto;
-  padding: env(safe-area-inset-top) 20px calc(24px + env(safe-area-inset-bottom));
+  padding: calc(6px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
   flex-direction: column;
-  animation: fadeIn 0.35s ease;
+  animation: fadeIn 0.4s ease;
 }
 .screen.active { display: flex; }
 .screen.dark { max-width: none; background: var(--dark); color: #f4ede4; }
-body:has(#booth.active) { background: var(--dark); }
 
-/* Moving curtain behind every screen (except the dark booth) */
-.bgVideo {
-  position: fixed; inset: 0; z-index: -1;
-  width: 100%; height: 100%;
-  object-fit: cover;
-  pointer-events: none;
-}
-body:has(#booth.active) .bgVideo { display: none; }
-
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -65,12 +81,18 @@ body:has(#booth.active) .bgVideo { display: none; }
   font-weight: 500;
   font-size: 15px;
   letter-spacing: 0.01em;
-  transition: transform 0.15s, background 0.2s, opacity 0.2s;
+  transition: transform 0.15s, background 0.2s, opacity 0.2s, box-shadow 0.2s;
 }
+a.btn { text-decoration: none; display: inline-block; }
 .btn:active { transform: scale(0.97); }
 .btn:disabled { opacity: 0.5; }
-.btn.primary { background: var(--ink); color: var(--bg); }
-.btn.ghost { background: transparent; border: 1.5px solid var(--ink); }
+.btn.primary { background: var(--ink); color: var(--bg); box-shadow: 0 8px 22px rgba(42, 31, 34, 0.22); }
+.btn.ghost {
+  background: rgba(255, 250, 247, 0.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid var(--ink);
+}
 .btn.danger { background: #b4443c; color: #fff; }
 .btn.link { background: none; padding: 8px; text-decoration: underline; text-underline-offset: 3px; color: var(--muted); }
 .btn.big { width: 100%; padding: 18px; font-size: 16px; }
@@ -78,10 +100,9 @@ body:has(#booth.active) .bgVideo { display: none; }
 .iconBtn {
   width: 42px; height: 42px;
   border-radius: 50%;
-  border: none;
-  background: rgba(127, 127, 127, 0.12);
-  font-size: 20px;
+  font-size: 19px;
   display: grid; place-items: center;
+  box-shadow: 0 2px 10px rgba(74, 40, 48, 0.08);
 }
 
 .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
@@ -91,33 +112,47 @@ body:has(#booth.active) .bgVideo { display: none; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 0;
+  padding: 12px 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 22px;
   font-weight: 500;
-  letter-spacing: 0.02em;
 }
 .topbar .spacer { width: 42px; }
 
-/* ---------- Music button ---------- */
+/* ---------- Floating music button: a mini CD ---------- */
 .musicBtn {
   position: fixed;
   z-index: 50;
   right: 16px;
   bottom: calc(16px + env(safe-area-inset-bottom));
-  width: 46px; height: 46px;
+  width: 50px; height: 50px;
   border-radius: 50%;
-  border: none;
-  background: var(--card);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.15);
+  padding: 0;
   display: grid; place-items: center;
+  box-shadow: var(--shadow);
 }
-.musicBtn .bars { display: flex; gap: 3px; align-items: flex-end; height: 16px; }
-.musicBtn i { width: 3px; height: 8px; background: var(--ink); border-radius: 2px; opacity: 0.4; }
-.musicBtn i:nth-child(2) { height: 14px; }
-.musicBtn.on i { opacity: 1; }
-.musicBtn.on i { animation: eq 0.9s ease-in-out infinite; }
-.musicBtn.on i:nth-child(2) { animation-delay: 0.2s; }
-.musicBtn.on i:nth-child(3) { animation-delay: 0.4s; }
-@keyframes eq { 0%, 100% { height: 4px; } 50% { height: 16px; } }
+.miniCd {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: url("vinyl.webp") center / cover;
+  animation: spin 2.6s linear infinite paused;
+  opacity: 0.55;
+  transition: opacity 0.3s;
+}
+body.musicOn .miniCd { animation-play-state: running; opacity: 1; }
+/* a slash across it while the music is off */
+.musicBtn::after {
+  content: "";
+  position: absolute;
+  width: 2px; height: 34px;
+  border-radius: 2px;
+  background: var(--ink);
+  transform: rotate(45deg);
+  transition: opacity 0.2s;
+}
+body.musicOn .musicBtn::after { opacity: 0; }
+body:has(#home.active) .musicBtn,
 body:has(#booth.active) .musicBtn,
 body:has(#edit.active) .musicBtn { display: none; }
 
@@ -129,13 +164,13 @@ body:has(#edit.active) .musicBtn { display: none; }
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 10px;
-  padding: 30px 0;
+  gap: 8px;
+  padding: 24px 0;
 }
 .eyebrow {
   margin: 0;
   text-transform: uppercase;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.3em;
   font-size: 11px;
   color: var(--muted);
 }
@@ -144,67 +179,177 @@ body:has(#edit.active) .musicBtn { display: none; }
   font-family: var(--serif);
   font-style: italic;
   font-weight: 500;
-  font-size: clamp(44px, 13vw, 64px);
+  font-size: clamp(46px, 13vw, 66px);
   line-height: 1;
 }
-.couple { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
-.lede { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 8px 0 18px; }
-
-/* little photo strip illustration */
-.hero-strip {
-  margin: 26px 0 10px;
-  width: 92px;
-  padding: 7px 7px 26px;
-  background: var(--ink);
-  border-radius: 4px;
-  display: grid;
-  gap: 5px;
-  transform: rotate(-4deg);
-  box-shadow: 0 18px 40px rgba(31, 26, 23, 0.25);
-  animation: float 5s ease-in-out infinite;
-}
-.hero-strip span {
-  height: 54px;
-  border-radius: 2px;
-  background: linear-gradient(135deg, #e9c9bf, #c97b84 60%, #8e5560);
-}
-.hero-strip span:nth-child(2) { background: linear-gradient(135deg, #f1e4d3, #b7a48f); }
-.hero-strip span:nth-child(3) { background: linear-gradient(135deg, #d9d9d9, #6e6e6e); }
-.hero-strip span:nth-child(4) { background: linear-gradient(135deg, #e8d7c4, #c9a77f); }
-@keyframes float { 0%, 100% { transform: rotate(-4deg) translateY(0); } 50% { transform: rotate(-2deg) translateY(-8px); } }
-
+.couple { margin: 2px 0 0; color: var(--muted); font-size: 14px; letter-spacing: 0.02em; }
+.lede { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 4px 0 16px; }
 .home-inner .btn.big { max-width: 340px; }
+.home-inner .btn.ghost { min-width: 170px; }
+
+/* Record + sleeve. The record (css/vinyl.webp, cut from "cd spinning.gif")
+   peeks out of its sleeve; when music plays it slides further out and spins.
+   Song covers come from --cover (app.js). */
+.cdPlayer {
+  position: relative;
+  width: 290px; height: 180px;
+  margin: 26px 0 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  transform: translateX(-24px);   /* sleeve + record look centred together */
+}
+@media (max-width: 350px) { .cdPlayer { transform: translateX(-24px) scale(0.85); margin: 10px 0 0; } }
+.sleeve {
+  position: absolute;
+  left: 0; top: 0;
+  z-index: 2;
+  width: 180px; height: 180px;
+  border-radius: 6px;
+  background:
+    var(--cover, none) center / cover,
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.35), transparent 55%),
+    linear-gradient(150deg, #ecc3c8, #c27c88 55%, #8a4a58);
+  box-shadow: 0 18px 40px rgba(74, 40, 48, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #fff;
+  overflow: hidden;
+}
+/* light catching the left edge, like a real CD case */
+.sleeve::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 14px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.35), transparent);
+}
+.sleeve .cdMono {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 46px;
+  line-height: 1;
+  text-shadow: 0 2px 12px rgba(74, 40, 48, 0.25);
+}
+.sleeve small { font-size: 10px; letter-spacing: 0.25em; text-transform: uppercase; opacity: 0.85; }
+body.hasCover .sleeve > *, body.hasCover .cdLabel .cdMono { display: none; }
+
+.cd {
+  position: absolute;
+  left: 5px; top: 5px;
+  z-index: 1;
+  width: 170px; height: 170px;
+  border-radius: 50%;
+  background: url("vinyl.webp") center / cover;
+  box-shadow: 0 10px 28px rgba(42, 31, 34, 0.35);
+  translate: 52px 0;
+  transition: translate 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: spin 3.2s linear infinite paused;
+}
+body.musicOn .cd { translate: 114px 0; animation-play-state: running; }
+.cdPlayer:active .cd { scale: 0.98; }
+
+/* the pink centre label: monogram, or the song's cover when it has one */
+.cdLabel {
+  position: absolute;
+  inset: 33.5%;
+  border-radius: 50%;
+  background: var(--cover, none) center / cover;
+}
+body.hasCover .cdLabel::after {   /* spindle hole on top of the cover */
+  content: "";
+  position: absolute;
+  inset: 44%;
+  border-radius: 50%;
+  background: #f4efe9;
+}
+.cdLabel .cdMono {
+  position: absolute;
+  top: 10%;
+  width: 100%;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 14px;
+  color: #fff;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.nowPlaying {
+  margin: 4px 0 0;
+  min-height: 52px;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+#npState {
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+body.musicOn #npState::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 1px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: 0.25; } }
+#npTitle {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 20px;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cd, .miniCd { animation: none; }
+}
 
 /* ---------- 2. Layout ---------- */
 .layoutGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 .layoutCard {
-  background: var(--card);
-  border: 1.5px solid var(--line);
-  border-radius: 20px;
+  border-radius: 22px;
   padding: 20px 14px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
+  box-shadow: var(--shadow);
   transition: transform 0.15s, border-color 0.2s;
 }
-.layoutCard:active { transform: scale(0.97); border-color: var(--ink); }
+.layoutCard:active { transform: scale(0.97); border-color: var(--accent); }
 .layoutCard .mini {
   position: relative;
   height: 150px;
   background: var(--ink);
   border-radius: 3px;
   margin-bottom: 12px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 20px rgba(42, 31, 34, 0.18);
 }
 .layoutCard .mini i {
   position: absolute;
-  background: linear-gradient(135deg, #efe2d6, #cdb5a3);
+  background: linear-gradient(150deg, #f3dcdc, #d6a7ae);
   border-radius: 1px;
 }
 .layoutCard b { font-size: 16px; font-weight: 500; }
@@ -212,8 +357,8 @@ body:has(#edit.active) .musicBtn { display: none; }
 
 /* ---------- 3. Booth ---------- */
 #booth { padding-left: 0; padding-right: 0; }
-#booth .topbar { padding: 14px 16px; max-width: 520px; width: 100%; margin: 0 auto; }
-#booth .iconBtn { background: rgba(255, 255, 255, 0.1); color: #fff; }
+#booth .topbar { padding: 12px 16px; max-width: 520px; width: 100%; margin: 0 auto; font-family: var(--sans); font-style: normal; font-size: 16px; }
+#booth .iconBtn { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.08); color: #fff; box-shadow: none; }
 
 .viewfinderWrap {
   flex: 1;
@@ -228,9 +373,10 @@ body:has(#edit.active) .musicBtn { display: none; }
 #viewfinder {
   position: relative;
   width: min(480px, 100%, calc(58vh * var(--ar, 1)));
-  border-radius: 22px;
+  border-radius: 24px;
   overflow: hidden;
   background: #1c1917;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 #viewfinder video {
   width: 100%;
@@ -313,7 +459,7 @@ body:has(#edit.active) .musicBtn { display: none; }
   overflow: hidden;
   transition: all 0.25s;
 }
-.dot.now { border-color: #fff; color: #fff; transform: scale(1.08); }
+.dot.now { border-color: var(--accent); color: #fff; transform: scale(1.08); }
 .dot canvas { width: 100%; height: 100%; }
 
 /* Horizontal scroll chips (filters in the booth) */
@@ -336,6 +482,7 @@ body:has(#edit.active) .musicBtn { display: none; }
   font-size: 13px;
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.75);
+  transition: background 0.2s, color 0.2s;
 }
 .chip.selected { background: #fff; color: var(--ink); }
 
@@ -378,29 +525,36 @@ body:has(#edit.active) .musicBtn { display: none; }
 .previewWrap {
   display: flex;
   justify-content: center;
-  padding: 6px 0;
+  padding: 4px 0;
 }
 #preview {
   max-width: 100%;
-  max-height: 52vh;
+  max-height: 46vh;
   border-radius: 4px;
-  box-shadow: 0 20px 50px rgba(31, 26, 23, 0.22), 0 2px 6px rgba(31, 26, 23, 0.1);
+  box-shadow: 0 20px 44px rgba(74, 40, 48, 0.24), 0 2px 6px rgba(42, 31, 34, 0.1);
   cursor: pointer;
 }
-.tip { text-align: center; color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+.tip { text-align: center; color: var(--muted); font-size: 12px; margin: 10px 0 8px; }
 
+.panel {
+  border-radius: 22px;
+  padding: 4px 16px 6px;
+  box-shadow: var(--shadow);
+}
 .panel h3 {
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.2em;
   color: var(--muted);
 }
-.panel .chips { padding: 10px 0; margin: 0; }
+/* chips run to the card's edges while scrolling */
+.panel .chips { padding: 10px 16px; margin: 0 -16px; width: auto; max-width: none; gap: 10px; }
 
 .swatch {
   flex: none;
+  width: 62px;
   border: none;
   background: none;
   padding: 0;
@@ -419,16 +573,23 @@ body:has(#edit.active) .musicBtn { display: none; }
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
   transition: outline-color 0.2s;
 }
-.swatch small { font-size: 11px; color: var(--muted); }
-.swatch.selected span, .swatch.selected canvas { outline-color: var(--ink); }
+.swatch small {
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.swatch.selected span, .swatch.selected canvas { outline-color: var(--accent); }
 .swatch.selected small { color: var(--ink); font-weight: 500; }
 
 .bottomBar {
   margin: auto -20px calc(-24px - env(safe-area-inset-bottom));
-  padding: 24px 20px calc(16px + env(safe-area-inset-bottom));
+  padding: 26px 20px calc(16px + env(safe-area-inset-bottom));
   position: sticky;
   bottom: 0;
-  background: linear-gradient(rgba(247, 242, 236, 0), var(--bg) 40%);
+  background: linear-gradient(rgba(248, 241, 238, 0), rgba(248, 241, 238, 0.92) 45%);
 }
 
 /* ---------- 5. Result ---------- */
@@ -443,23 +604,40 @@ body:has(#edit.active) .musicBtn { display: none; }
 }
 /* the photo "prints" out of a slot, like a real booth */
 .printSlot {
+  position: relative;
   width: 100%;
   display: flex;
   justify-content: center;
   overflow: hidden;
-  padding: 10px 0 30px;
-  border-top: 6px solid var(--ink);
-  border-radius: 3px;
+  padding: 10px 28px 44px;
+}
+.printSlot::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 8%; right: 8%;
+  z-index: 1;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ink);
+  box-shadow: inset 0 -3px 6px rgba(0, 0, 0, 0.6), 0 4px 10px rgba(42, 31, 34, 0.2);
 }
 #resultImg {
-  max-width: 82%;
-  max-height: 60vh;
-  box-shadow: 0 20px 50px rgba(31, 26, 23, 0.25);
+  max-width: 100%;
+  max-height: 56vh;
+  box-shadow: 0 16px 34px rgba(74, 40, 48, 0.24);
   animation: print 1.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 @keyframes print { from { transform: translateY(-105%); } to { transform: none; } }
 
-.uploadStatus { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
+.uploadStatus {
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+.uploadStatus:empty { display: none; }
 .uploadStatus.sending::before {
   content: "";
   display: inline-block;
@@ -473,12 +651,10 @@ body:has(#edit.active) .musicBtn { display: none; }
 }
 .uploadStatus.ok { color: #4f7a52; }
 .uploadStatus.fail { color: #b4443c; }
-@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- 6. Gallery ---------- */
 .tabs {
   display: flex;
-  background: rgba(127, 127, 127, 0.1);
   border-radius: 999px;
   padding: 4px;
 }
@@ -490,24 +666,35 @@ body:has(#edit.active) .musicBtn { display: none; }
   border-radius: 999px;
   font-size: 14px;
   color: var(--muted);
+  transition: background 0.2s, color 0.2s;
 }
-.tab.active { background: var(--card); color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08); }
+.tab.active { background: var(--ink); color: var(--bg); }
 
-.galleryMsg { color: var(--muted); font-size: 13px; text-align: center; margin: 14px 0; }
+.galleryMsg {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+  margin: 16px 0;
+  padding: 26px 22px;
+  border-radius: 22px;
+}
+.galleryMsg:empty { display: none; }
 
-.masonry { columns: 2; column-gap: 10px; }
+.masonry { columns: 2; column-gap: 10px; margin-top: 14px; }
 .tile {
   display: block;
   width: 100%;
   margin: 0 0 10px;
   padding: 0;
   border: none;
-  border-radius: 10px;
+  border-radius: 14px;
   overflow: hidden;
-  background: var(--line);
+  background: var(--glass);
   break-inside: avoid;
   position: relative;
   min-height: 80px;
+  box-shadow: 0 6px 18px rgba(74, 40, 48, 0.12);
 }
 .tile img { width: 100%; display: block; }
 .tile.mine::after {
@@ -524,7 +711,7 @@ body:has(#edit.active) .musicBtn { display: none; }
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(15, 13, 12, 0.94);
+  background: rgba(17, 14, 15, 0.94);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -534,20 +721,27 @@ body:has(#edit.active) .musicBtn { display: none; }
   animation: fadeIn 0.25s;
 }
 .lightbox img { max-width: 100%; max-height: 72vh; border-radius: 4px; }
-.lightbox .close { position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px; color: #fff; background: rgba(255, 255, 255, 0.12); }
+.lightbox .close { position: absolute; top: calc(16px + env(safe-area-inset-top)); right: 16px; color: #fff; background: rgba(255, 255, 255, 0.12); border-color: transparent; }
 .lightbox .btn.primary { background: #fff; color: var(--ink); }
 
-/* ---------- Toast ---------- */
+/* ---------- Toast (top of the screen, out of the way of buttons) ---------- */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(80px + env(safe-area-inset-bottom));
-  transform: translate(-50%, 20px);
-  background: var(--ink);
+  top: calc(14px + env(safe-area-inset-top));
+  max-width: min(86vw, 420px);
+  transform: translate(-50%, -20px);
+  background: rgba(42, 31, 34, 0.9);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   color: var(--bg);
   padding: 10px 18px;
   border-radius: 999px;
   font-size: 13px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   opacity: 0;
   pointer-events: none;
   transition: all 0.3s;

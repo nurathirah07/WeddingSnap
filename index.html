@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#f7f2ec">
   <title>Wedding Snap · Photobooth</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📸</text></svg>">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,9 +16,9 @@
   <video class="bgVideo" src="css/background.mp4" poster="css/background.jpg"
          autoplay muted loop playsinline aria-hidden="true"></video>
 
-  <!-- Music on/off, visible on every screen -->
+  <!-- Music on/off: a mini CD on every screen except home (home has the big one) -->
   <button id="musicBtn" class="musicBtn" aria-label="Toggle music">
-    <span class="bars"><i></i><i></i><i></i></span>
+    <span class="miniCd"></span>
   </button>
 
   <!-- ===================== 1. HOME ===================== -->
@@ -27,9 +28,20 @@
       <h1 class="display" id="homeTitle">Walimatul Urus</h1>
       <p class="couple" id="homeCouple"></p>
 
-      <div class="hero-strip" aria-hidden="true">
-        <span></span><span></span><span></span><span></span>
-      </div>
+      <!-- CD sliding out of its sleeve; spins while the music plays. Tap = play / pause -->
+      <button class="cdPlayer" id="cdPlayer" aria-label="Play or pause music">
+        <span class="cd" aria-hidden="true">
+          <span class="cdLabel"><b class="cdMono"></b></span>
+        </span>
+        <span class="sleeve" aria-hidden="true">
+          <b class="cdMono"></b>
+          <small id="sleeveDate"></small>
+        </span>
+      </button>
+      <p class="nowPlaying">
+        <small id="npState">Tap the record for music</small>
+        <span id="npTitle">&nbsp;</span>
+      </p>
 
       <p class="lede">Capture the day from your point of view.<br>Every photo goes straight to the couple's album.</p>
 
