@@ -188,9 +188,21 @@ const framesReady = fetch("frames/frames.json", { cache: "no-cache" })
   .catch(() => console.warn("No frames/frames.json - only built-in frames"));
 
 // Wedding details saved from the admin page (settings.json) replace the
-// defaults in config.js - on the home page and on every photo
-const settingsReady = fetch("settings.json", { cache: "no-cache" })
-  .then((res) => (res.ok ? res.json() : {}))
+// defaults in config.js - on the home page and on every photo.
+// Opened straight from the folder (file://), browsers won't let the page
+// read settings.json, so the same details come from settings.js instead.
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+const settingsReady = (location.protocol === "file:"
+    ? loadScript("settings.js").then(() => window.SETTINGS_DATA || {})
+    : fetch("settings.json", { cache: "no-cache" }).then((res) => (res.ok ? res.json() : {})))
   .then((s) => ["TITLE", "COUPLE", "DATE"].forEach((key) => {
     const value = s[key.toLowerCase()];
     if (typeof value === "string" && value.trim()) CONFIG[key] = value.trim();
@@ -229,27 +241,25 @@ function showDetails() {
 $("homeStart").addEventListener("click", () => show("layout"));
 $("homeGallery").addEventListener("click", () => show("gallery"));
 
-// Music starts on the guest's first tap anywhere. (Browsers don't allow
-// sound before the user touches the page, so this is the earliest possible.)
-// If they switched it off last time, it stays off.
-const MUSIC_PREF = "weddingsnap.music";
+// Music starts every time the app is opened, on the guest's first tap
+// anywhere. (Browsers don't allow sound before the user touches the page,
+// so this is the earliest possible.) Stopping it only lasts for this visit.
 const FIRST_TAP = ["click", "keydown"];
+localStorage.removeItem("weddingsnap.music");   // old "music off" memory from earlier versions
 
 function firstTap(e) {
   FIRST_TAP.forEach((t) => document.removeEventListener(t, firstTap, true));
   Sound.unlock();
   if (e.target.closest && e.target.closest("#musicBtn, #cdPlayer")) return;   // they handle themselves
-  if (localStorage.getItem(MUSIC_PREF) !== "off" && !Sound.playing) setMusicUI(Sound.toggle());
+  if (!Sound.playing) setMusicUI(Sound.toggle());
 }
 FIRST_TAP.forEach((t) => document.addEventListener(t, firstTap, true));
 
 // Music the moment the app opens. If the browser blocks sound until the
 // first tap (all phones do), show the welcome cover so that tap comes first.
-if (localStorage.getItem(MUSIC_PREF) !== "off") {
-  Sound.preload();   // start downloading the first chorus now, so it plays right after the tap
-  if (Sound.canAutoplay()) setMusicUI(Sound.toggle());
-  else $("intro").classList.remove("hidden");
-}
+Sound.preload();   // start downloading the first chorus now, so it plays right after the tap
+if (Sound.canAutoplay()) setMusicUI(Sound.toggle());
+else $("intro").classList.remove("hidden");
 function closeIntro() {
   // firstTap (above) has already started the music by now
   $("intro").classList.add("leaving");
@@ -266,9 +276,7 @@ function setMusicUI(on) {
 }
 
 function toggleMusic() {
-  const on = Sound.toggle();
-  localStorage.setItem(MUSIC_PREF, on ? "on" : "off");
-  setMusicUI(on);
+  setMusicUI(Sound.toggle());
 }
 $("musicBtn").addEventListener("click", toggleMusic);
 $("cdPlayer").addEventListener("click", toggleMusic);

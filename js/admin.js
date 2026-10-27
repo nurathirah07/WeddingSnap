@@ -532,6 +532,9 @@ $("publishBtn").addEventListener("click", async () => {
     if (details) {
       tree.push({ path: "settings.json", mode: "100644", type: "blob",
                   content: JSON.stringify(newDetails, null, 2) + "\n" });
+      // Same details as a script, for index.html opened straight from the folder
+      tree.push({ path: "settings.js", mode: "100644", type: "blob",
+                  content: "window.SETTINGS_DATA = " + JSON.stringify(newDetails, null, 2) + ";\n" });
     }
     // Removed chorus sections: write songs.json back without them. The
     // build keeps chorus times of songs that haven't changed, so they stay gone.
