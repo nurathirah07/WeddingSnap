@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#f7f2ec">
+  <meta name="theme-color" content="#f8f1ee">
   <title>Wedding Snap · Photobooth</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📸</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='%232a1f22'/><circle cx='16' cy='16' r='6' fill='%23c27c88'/><circle cx='16' cy='16' r='1.5' fill='%23f8f1ee'/></svg>">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,6 +13,20 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <!-- Line icons (used as <svg><use href="#i-name"/></svg>) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></symbol>
+    <symbol id="i-retake" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v4h4"/></symbol>
+    <symbol id="i-flip" viewBox="0 0 24 24"><path d="M3.5 8.5A1.5 1.5 0 0 1 5 7h2.2l1.6-2h6.4l1.6 2H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M14.8 12.4a2.9 2.9 0 0 1-5.1 1.6"/><path d="M9.2 12.6a2.9 2.9 0 0 1 5.1-1.6"/><path d="M14.4 9.6v1.5h-1.5M9.6 15.4v-1.5h1.5"/></symbol>
+    <symbol id="i-photos" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 15.5l-4.5-4.5-8.5 8.5"/></symbol>
+    <symbol id="i-public" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/></symbol>
+  </svg>
+
   <video class="bgVideo" src="css/background.mp4" poster="css/background.jpg"
          autoplay muted loop playsinline aria-hidden="true"></video>
 
@@ -56,7 +70,12 @@
         <span id="npTitle">&nbsp;</span>
       </p>
 
-      <p class="lede">Capture the day from your point of view.<br>Every photo goes straight to the couple's album.</p>
+      <!-- How it works, in three steps -->
+      <ol class="steps">
+        <li><b>1</b>Pick a layout</li>
+        <li><b>2</b>Strike a pose</li>
+        <li><b>3</b>Share or keep</li>
+      </ol>
 
       <button class="btn primary big" id="homeStart">Start photobooth</button>
       <button class="btn ghost" id="homeGallery">View gallery</button>
@@ -66,19 +85,20 @@
   <!-- ===================== 2. LAYOUT ===================== -->
   <section class="screen" id="layout">
     <header class="topbar">
-      <button class="iconBtn" data-go="home" aria-label="Back">←</button>
+      <button class="iconBtn" data-go="home" aria-label="Back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
       <span>Choose a layout</span>
       <span class="spacer"></span>
     </header>
+    <p class="screenHint">How many photos would you like on your print?</p>
     <div class="layoutGrid" id="layoutGrid"><!-- built by JS --></div>
   </section>
 
   <!-- ===================== 3. BOOTH (camera) ===================== -->
   <section class="screen dark" id="booth">
     <header class="topbar">
-      <button class="iconBtn" id="boothBack" aria-label="Back">←</button>
+      <button class="iconBtn" id="boothBack" aria-label="Back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
       <span id="boothTitle">Shot 1 of 4</span>
-      <button class="iconBtn" id="flipBtn" aria-label="Switch camera">⟲</button>
+      <button class="iconBtn" id="flipBtn" aria-label="Switch camera"><svg class="ic" aria-hidden="true"><use href="#i-flip"/></svg></button>
     </header>
 
     <div class="viewfinderWrap">
@@ -98,6 +118,7 @@
     </div>
 
     <div class="slotDots" id="slotDots"><!-- built by JS --></div>
+    <p class="boothHint" id="boothHint"></p>
 
     <div class="chips" id="liveFilters"><!-- built by JS --></div>
 
@@ -105,7 +126,7 @@
       <button class="sideBtn" id="timerBtn" aria-label="Countdown timer">3s</button>
       <button class="shutter" id="shutterBtn" aria-label="Take photo"><span></span></button>
       <label class="sideBtn" aria-label="Pick from gallery">
-        ⧉
+        <svg class="ic" aria-hidden="true"><use href="#i-photos"/></svg>
         <input type="file" id="pickFile" accept="image/*" hidden>
       </label>
     </div>
@@ -114,7 +135,7 @@
   <!-- ===================== 4. EDIT ===================== -->
   <section class="screen" id="edit">
     <header class="topbar">
-      <button class="iconBtn" id="editBack" aria-label="Retake all">↺</button>
+      <button class="iconBtn" id="editBack" aria-label="Retake all"><svg class="ic" aria-hidden="true"><use href="#i-retake"/></svg></button>
       <span>Make it yours</span>
       <span class="spacer"></span>
     </header>
@@ -135,10 +156,10 @@
       <!-- Who can see the photo. Private photos never leave the phone. -->
       <div class="privacy" role="radiogroup" aria-label="Who can see this photo">
         <button class="privOpt selected" data-privacy="public" role="radio" aria-checked="true">
-          🌍 Public
+          <svg class="ic" aria-hidden="true"><use href="#i-public"/></svg> Public
         </button>
         <button class="privOpt" data-privacy="private" role="radio" aria-checked="false">
-          🔒 Private
+          <svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg> Private
         </button>
       </div>
       <p class="privHint" id="privHint">Goes to the couple's album and everyone's gallery</p>
@@ -149,12 +170,13 @@
   <!-- ===================== 5. RESULT ===================== -->
   <section class="screen" id="result">
     <div class="result-inner">
+      <p class="eyebrow">Your print is ready</p>
       <div class="printSlot">
         <img id="resultImg" alt="Your photo">
       </div>
       <p class="uploadStatus" id="uploadStatus"></p>
 
-      <button class="btn ghost small hidden" id="makePublicBtn">🌍 Share to the album instead</button>
+      <button class="btn ghost small hidden" id="makePublicBtn">Share to the album instead</button>
 
       <div class="row">
         <button class="btn primary" id="saveBtn">Save to phone</button>
@@ -167,9 +189,9 @@
   <!-- ===================== 6. GALLERY ===================== -->
   <section class="screen" id="gallery">
     <header class="topbar">
-      <button class="iconBtn" data-go="home" aria-label="Back">←</button>
+      <button class="iconBtn" data-go="home" aria-label="Back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
       <span>Gallery</span>
-      <button class="iconBtn" id="refreshBtn" aria-label="Refresh">⟳</button>
+      <button class="iconBtn" id="refreshBtn" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
     </header>
     <div class="tabs">
       <button class="tab active" data-tab="all">Everyone</button>
@@ -184,16 +206,16 @@
   <div class="lightbox hidden" id="lightbox">
     <div class="lbTop">
       <span id="lbCount"></span>
-      <button class="iconBtn" id="lbClose" aria-label="Close">✕</button>
+      <button class="iconBtn" id="lbClose" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
     </div>
     <div class="lbStage" id="lbStage">
-      <button class="lbNav" id="lbPrev" aria-label="Previous photo">‹</button>
+      <button class="lbNav" id="lbPrev" aria-label="Previous photo"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
       <img id="lbImg" alt="">
-      <button class="lbNav" id="lbNext" aria-label="Next photo">›</button>
+      <button class="lbNav" id="lbNext" aria-label="Next photo"><svg class="ic" aria-hidden="true"><use href="#i-next"/></svg></button>
     </div>
     <div class="row">
       <button class="btn primary" id="lbSave">Save</button>
-      <button class="btn ghost light hidden" id="lbShare">🌍 Share to album</button>
+      <button class="btn ghost light hidden" id="lbShare">Share to album</button>
       <button class="btn danger hidden" id="lbDelete">Delete</button>
     </div>
   </div>

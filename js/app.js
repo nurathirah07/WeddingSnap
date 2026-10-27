@@ -125,10 +125,24 @@ function fitText(ctx, text, x, y, maxWidth, size, font) {
 // =========================================================
 //  Screens
 // =========================================================
+// Screens in order. Going to a later one slides in from the right,
+// going back slides in from the left.
+const SCREENS = ["home", "layout", "booth", "edit", "result", "gallery"];
+let current = "home";
+let ignorePop = false;
+
 function show(screenId) {
+  document.body.classList.toggle("navBack", SCREENS.indexOf(screenId) < SCREENS.indexOf(current));
+  current = screenId;
   document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === screenId));
   document.querySelector('meta[name="theme-color"]')
-    .setAttribute("content", screenId === "booth" ? "#0f0d0c" : "#f7f2ec");
+    .setAttribute("content", screenId === "booth" ? "#110e0f" : "#f8f1ee");
+
+  // The phone's Back button should go back a screen, not close the app
+  // (and lose the photos). One history entry is kept while away from home.
+  const inApp = history.state && history.state.app;
+  if (screenId !== "home" && !inApp && !(history.state && history.state.lightbox)) history.pushState({ app: true }, "");
+  if (screenId === "home" && inApp) { ignorePop = true; history.back(); }
 
   // Camera is only needed in the booth. Turn it off elsewhere to save battery.
   if (screenId === "booth") startCamera();
@@ -140,6 +154,22 @@ function show(screenId) {
 
 document.querySelectorAll("[data-go]").forEach((btn) =>
   btn.addEventListener("click", () => show(btn.dataset.go)));
+
+// What the phone's Back button does on each screen
+function goBack() {
+  if (current === "booth") $("boothBack").click();       // cancels a countdown first
+  else if (current === "edit") $("editBack").click();    // asks before throwing photos away
+  else if (current !== "home") show("home");
+}
+
+window.addEventListener("popstate", () => {
+  if (ignorePop) { ignorePop = false; return; }
+  const lb = $("lightbox");
+  if (!lb.classList.contains("hidden")) { lb.classList.add("hidden"); return; }
+  goBack();
+  // ready for the next Back (show() may already have added the entry)
+  if (current !== "home" && !(history.state && history.state.app)) history.pushState({ app: true }, "");
+});
 
 // =========================================================
 //  PNG frames come from frames/frames.json (made by tools/build-frames.mjs).
@@ -406,6 +436,13 @@ function renderBooth() {
   }
   $("timerBtn").textContent = state.timer + "s";
   $("shutterBtn").classList.toggle("busy", state.busy);
+
+  // Say what the shutter will do, so nobody has to guess
+  const left = state.shots.filter((s) => !s).length;
+  $("boothHint").textContent = state.busy ? ""
+    : state.retakeOne ? `Tap the shutter to retake this photo (${state.timer}s countdown)`
+    : left > 1 ? `Tap the shutter: ${left} photos, ${state.timer}s countdown before each`
+    : `Tap the shutter: ${state.timer}s countdown`;
 }
 
 // Live filter chips in the booth
@@ -494,6 +531,7 @@ $("shutterBtn").addEventListener("click", async () => {
     state.shots[state.current] = capture();
     Sound.shutter();
     flash();
+    navigator.vibrate?.(25);
     renderBooth();
 
     if (k < todo.length - 1) await wait(CONFIG.POSE_PAUSE);
@@ -540,15 +578,28 @@ $("flipBtn").addEventListener("click", () => {
   startCamera();
 });
 
-$("boothBack").addEventListener("click", () => {
-  if (state.busy) {               // cancel the countdown
-    state.runId++;
-    state.busy = false;
-    Sound.duck(false);
-    $("countdown").classList.remove("show");
-    renderBooth();
-    return;
+function cancelCountdown() {
+  state.runId++;
+  state.busy = false;
+  Sound.duck(false);
+  $("countdown").classList.remove("show");
+  renderBooth();
+}
+
+// Phone locked / switched apps while in the booth: free the camera, and
+// turn it back on (with the keep-awake lock) when the guest returns
+document.addEventListener("visibilitychange", () => {
+  if (current !== "booth") return;
+  if (document.hidden) {
+    if (state.busy) cancelCountdown();
+    stopCamera();
+  } else {
+    startCamera();
   }
+});
+
+$("boothBack").addEventListener("click", () => {
+  if (state.busy) { cancelCountdown(); return; }
   if (state.retakeOne) { state.retakeOne = false; show("edit"); return; }
   show("layout");
 });
@@ -787,10 +838,10 @@ async function keepPrivate() {
   status.className = "uploadStatus";
   try {
     state.final.privateId = await Private.add(state.final.blob);
-    status.textContent = "🔒 Private: only you can see it, under Gallery → Mine. Save it to your phone to keep it for good.";
+    status.textContent = "Kept private. Only you can see it, under Gallery → Mine. Save it to your phone to keep it for good.";
   } catch (err) {
     console.warn(err);
-    status.textContent = "🔒 Not shared. Save it to your phone below to keep it.";
+    status.textContent = "Not shared. Save it to your phone below to keep it.";
   }
   $("makePublicBtn").classList.toggle("hidden", !CONFIG.SCRIPT_URL);
 }
@@ -811,7 +862,7 @@ async function upload() {
   $("makePublicBtn").classList.add("hidden");
   if (!CONFIG.SCRIPT_URL) {
     status.className = "uploadStatus";
-    status.textContent = "Album not connected yet. Save it to your phone below 💛";
+    status.textContent = "The album isn't connected yet. Save it to your phone below.";
     return false;
   }
   status.className = "uploadStatus sending";
@@ -820,7 +871,7 @@ async function upload() {
   try {
     await sendToAlbum(state.final.dataUrl);
     status.className = "uploadStatus ok";
-    status.textContent = "🌍 Shared to the couple's album ✓";
+    status.textContent = "Shared to the couple's album ✓";
     return true;
   } catch (err) {
     console.warn(err);
@@ -902,7 +953,7 @@ function renderGallery() {
     ? list.length + (list.length === 1 ? " photo" : " photos")
     : galleryTab === "mine" ? "You haven't taken any photos yet."
     : !CONFIG.SCRIPT_URL ? "The shared album isn't connected yet. Your own photos are under Mine."
-    : "No public photos yet. Be the first! 📸";
+    : "No photos yet. Be the first to share one.";
 
   const grid = $("galleryGrid");
   grid.innerHTML = "";
@@ -968,14 +1019,13 @@ function showPhoto(i) {
   $("lbNext").classList.toggle("hidden", n < 2);
   $("lbDelete").classList.toggle("hidden", !lbPhoto.private && !Mine.token(id));
   $("lbShare").classList.toggle("hidden", !lbPhoto.private || !CONFIG.SCRIPT_URL);
-  $("lbCount").textContent += lbPhoto.private ? (n > 1 ? "  ·  " : "") + "🔒 PRIVATE" : "";
+  $("lbCount").textContent += lbPhoto.private ? (n > 1 ? "  ·  " : "") + "PRIVATE" : "";
 }
 
 function closeLightbox() {
   if (history.state && history.state.lightbox) history.back();   // popstate hides it
   else lb.classList.add("hidden");
 }
-window.addEventListener("popstate", () => lb.classList.add("hidden"));
 
 $("lbClose").addEventListener("click", closeLightbox);
 $("lbPrev").addEventListener("click", () => showPhoto(lbIndex - 1));
@@ -1019,7 +1069,7 @@ $("lbShare").addEventListener("click", async () => {
     await sendToAlbum(await blobToDataUrl(photo.blob));
     await Private.remove(photo.id);
     closeLightbox();
-    toast("🌍 Shared to the album");
+    toast("Shared to the album");
     loadGallery();
   } catch (err) {
     toast("Couldn't share: " + err.message);

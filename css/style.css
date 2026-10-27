@@ -4,8 +4,8 @@
 :root {
   --bg: #f8f1ee;                          /* blush ivory (a colour, used for text on dark buttons too) */
   --card: #fffaf7;
-  --glass: rgba(255, 250, 247, 0.74);     /* frosted cards over the curtain */
-  --glass-line: rgba(255, 255, 255, 0.7);
+  --glass: rgba(255, 250, 246, 0.92);     /* "photo paper" cards over the curtain */
+  --glass-line: rgba(42, 31, 34, 0.08);
   --ink: #2a1f22;
   --muted: #76646a;
   --line: rgba(42, 31, 34, 0.1);
@@ -52,8 +52,8 @@ body:has(#booth.active) .bgVideo { display: none; }
 .glass,
 .layoutCard, .panel, .tabs, .galleryMsg, .uploadStatus, .iconBtn, .musicBtn {
   background: var(--glass);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   border: 1px solid var(--glass-line);
 }
 
@@ -66,9 +66,13 @@ body:has(#booth.active) .bgVideo { display: none; }
   margin: 0 auto;
   padding: calc(6px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
   flex-direction: column;
-  animation: fadeIn 0.4s ease;
+  animation: enterForward 0.38s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .screen.active { display: flex; }
+body.navBack .screen { animation-name: enterBack; }
+@keyframes enterForward { from { opacity: 0; transform: translateX(22px); } to { opacity: 1; transform: none; } }
+@keyframes enterBack    { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .screen { animation: fadeIn 0.2s ease; } }
 .screen.dark { max-width: none; background: var(--dark); color: #f4ede4; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -800,7 +804,7 @@ body.musicOn #npState::before {
   backdrop-filter: blur(6px);
 }
 .tile.mine::after { content: "Mine"; }
-.tile.private::after { content: "🔒 Private"; }
+.tile.private::after { content: "Private"; }
 .tile.mine::after,
 .tile.private::after {
   position: absolute;
@@ -848,6 +852,8 @@ body.musicOn #npState::before {
 }
 .lightbox img.loading { filter: blur(2px); }
 .lbNav {
+  display: grid;
+  place-items: center;
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -893,3 +899,67 @@ body:has(#lightbox:not(.hidden)) .musicBtn { display: none; }
   z-index: 200;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* =========================================================
+   Polish: icons, steps, hints, small details
+   ========================================================= */
+.ic {
+  width: 20px; height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.sideBtn .ic { width: 22px; height: 22px; }
+.lbNav .ic { width: 18px; height: 18px; }
+.privOpt { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.privOpt .ic { width: 16px; height: 16px; }
+
+/* Buttons feel pressed, not just changed */
+.btn, .iconBtn, .sideBtn, .chip, .tab, .privOpt, .layoutCard, .swatch, .tile { -webkit-user-select: none; user-select: none; }
+.iconBtn:active, .sideBtn:active, .lbNav:active { transform: scale(0.92); }
+.iconBtn, .sideBtn, .lbNav { transition: transform 0.15s, background 0.2s; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Home: three steps */
+.steps {
+  list-style: none;
+  margin: 10px 0 20px;
+  padding: 0;
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.steps li { display: flex; align-items: center; gap: 6px; }
+.steps b {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  display: grid; place-items: center;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.screenHint { margin: -4px 0 14px; color: var(--muted); font-size: 13px; text-align: center; }
+
+/* Booth: what the shutter will do */
+.boothHint {
+  margin: 0;
+  min-height: 18px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.02em;
+}
+
+/* Result */
+.result-inner .eyebrow { margin-bottom: 2px; }
+
+/* Gallery tiles lift slightly when pressed */
+.tile { transition: transform 0.15s; }
+.tile:active { transform: scale(0.98); }
+.tile::before { content: ""; background: rgba(17, 14, 15, 0.45) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7'/%3E%3C/svg%3E") center / 13px no-repeat; }
