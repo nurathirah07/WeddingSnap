@@ -90,6 +90,7 @@ How it plays:
 
 - **Start:** music plays as soon as the app opens wherever the browser allows it. Phones only allow sound after a tap, so there a welcome cover with the couple's names says "Tap to open", and that tap starts the music. If a guest turns music off, it stays off for them next time (and the cover is skipped).
 - **Order and repeat:** every chorus clip plays once in random order, then the list reshuffles and repeats. It avoids playing the same song twice in a row whenever the mix of songs allows.
+- **Only the chorus is downloaded:** music runs fully on the Web Audio API. `songs.json` has a seek table (where every 2 seconds of each mp3 starts), so the app downloads just the clip it's about to play, about 1 MB instead of a 3–9 MB song. The next clip downloads while the current one plays, and each clip's volume is evened out so quiet and loud songs sound alike. (`MODE: "full"` plays whole songs, so it downloads whole files.)
 - **Transitions:** each change uses a random DJ transition: `crossfade`, `sweep` (a muffled filter sweep), `echo` (the song echoes away) or `tapestop` (the song slows down like a record). Choose which ones are used in `CONFIG.MUSIC.TRANSITIONS`.
 
 On every push, GitHub runs `tools/build-music.mjs`, which:

@@ -246,6 +246,7 @@ FIRST_TAP.forEach((t) => document.addEventListener(t, firstTap, true));
 // Music the moment the app opens. If the browser blocks sound until the
 // first tap (all phones do), show the welcome cover so that tap comes first.
 if (localStorage.getItem(MUSIC_PREF) !== "off") {
+  Sound.preload();   // start downloading the first chorus now, so it plays right after the tap
   if (Sound.canAutoplay()) setMusicUI(Sound.toggle());
   else $("intro").classList.remove("hidden");
 }

@@ -11,7 +11,9 @@ const TOKEN_KEY = "weddingsnap.admin.token";
 const REPO_KEY  = "weddingsnap.admin.repo";
 
 let repo = "", token = "", branch = "main";
-let songs = [];    // { name, path, size, info, status: "live" | "new" | "delete", file }
+let songs = [];    // { name, path, size, info, status: "live" | "new" | "delete", file, cut }
+                   // cut = Set of chorus times (seconds) marked for removal
+let liveSongList = { seekStep: 2, songs: [] };   // music/songs.json as the live site has it
 let frames = [];   // { name, path, size, info, status, file, preview }
 // Wedding details: what's saved in settings.json, and what's in the boxes now
 let liveDetails = { title: "", couple: "", date: "" };
@@ -85,14 +87,15 @@ function liveSite() {
   return name.toLowerCase() === host ? `https://${host}/` : `https://${host}/${name}/`;
 }
 
-async function liveJson(path, key) {
+async function liveData(path) {
   try {
     const res = await fetch(liveSite() + path, { cache: "no-cache" });
-    return (await res.json())[key] || [];
+    return await res.json();
   } catch (e) {
-    return [];
+    return {};
   }
 }
+const liveJson = async (path, key) => (await liveData(path))[key] || [];
 
 // =========================================================
 //  Connect
@@ -164,7 +167,11 @@ $("disconnectBtn").addEventListener("click", () => {
 async function loadLibrary() {
   const [songFiles, frameFiles, songInfo, frameInfo] = await Promise.all([
     listFolder("music"), listFolder("frames"),
-    liveJson("music/songs.json", "songs"), liveJson("frames/frames.json", "frames"),
+    liveData("music/songs.json").then((data) => {
+      liveSongList = { seekStep: data.seekStep || 2, songs: data.songs || [] };
+      return liveSongList.songs;
+    }),
+    liveJson("frames/frames.json", "frames"),
     loadDetails(),
   ]);
 
@@ -313,6 +320,17 @@ function statusBadge(item) {
   return "";
 }
 
+// Mark one chorus section for removal (or undo). Every song keeps at
+// least one section - to drop a song completely, Remove the song.
+function toggleSection(song, t) {
+  song.cut = song.cut || new Set();
+  if (song.cut.has(t)) song.cut.delete(t);
+  else if (song.cut.size >= song.info.highlights.length - 1) {
+    return toast("A song needs at least one section. To drop it completely, press Remove.");
+  } else song.cut.add(t);
+  render();
+}
+
 // Remove = mark for deletion (live files) or just forget (new files)
 function toggleRemove(list, item) {
   if (item.status === "new" && !item.replacing) list.splice(list.indexOf(item), 1);
@@ -329,10 +347,12 @@ function renderSongs() {
   songs.forEach((song) => {
     const li = document.createElement("li");
     li.className = "song " + song.status;
+    const kept = song.info ? song.info.highlights.filter((t) => !song.cut?.has(t)) : [];
     const detail = song.status === "new"
       ? fmtSize(song.size) + " · chorus is found after publishing"
       : song.info
-        ? fmtTime(song.info.duration) + " · chorus at " + song.info.highlights.map(fmtTime).join(", ")
+        ? fmtTime(song.info.duration) + " · chorus at " + kept.map(fmtTime).join(", ") +
+          (song.cut?.size ? ` · ${song.cut.size} section${song.cut.size > 1 ? "s" : ""} to remove` : "")
         : fmtSize(song.size);
     li.innerHTML = `
       <div class="songMain">
@@ -343,6 +363,8 @@ function renderSongs() {
 
     const btns = li.querySelector(".songBtns");
     const times = song.status === "new" ? [0] : song.info ? song.info.highlights : [0];
+    // Chorus sections can be removed one by one (live songs only)
+    const editable = song.status === "live" && song.info && song.info.highlights.length;
     times.forEach((t) => {
       const b = document.createElement("button");
       b.className = "mini";
@@ -352,7 +374,19 @@ function renderSongs() {
         player.currentTime = t;
         player.play().catch(() => toast("Can't play this yet - it goes live after publishing"));
       };
-      btns.appendChild(b);
+      if (!editable) { btns.appendChild(b); return; }
+
+      const cut = song.cut?.has(t);
+      const group = document.createElement("span");
+      group.className = "section" + (cut ? " cut" : "");
+      const x = document.createElement("button");
+      x.className = "sectionX";
+      x.textContent = cut ? "↺" : "×";
+      x.title = cut ? "Keep this section" : "Remove this section";
+      x.setAttribute("aria-label", (cut ? "Keep" : "Remove") + " the section at " + fmtTime(t));
+      x.onclick = () => toggleSection(song, t);
+      group.append(b, x);
+      btns.appendChild(group);
     });
     const stop = document.createElement("button");
     stop.className = "mini";
@@ -437,6 +471,7 @@ function drawFrameThumb(canvas, frame, geo) {
 function pendingChanges() {
   const all = [...songs, ...frames];
   return {
+    sections: songs.filter((s) => s.status === "live" && s.cut && s.cut.size),
     details: detailsChanged(),
     adds: all.filter((x) => x.status === "new" && !(x.preview && !x.preview.slots.length)),
     deletes: all.filter((x) => x.status === "delete"),
@@ -445,11 +480,13 @@ function pendingChanges() {
 }
 
 function renderBar() {
-  const { details, adds, deletes, broken } = pendingChanges();
-  const n = adds.length + deletes.length + (details ? 1 : 0);
+  const { sections, details, adds, deletes, broken } = pendingChanges();
+  const cuts = sections.reduce((sum, s) => sum + s.cut.size, 0);
+  const n = adds.length + deletes.length + (details ? 1 : 0) + cuts;
   $("publishBar").classList.toggle("hidden", !n && !broken.length);
   const parts = [];
   if (details) parts.push("Wedding details changed");
+  if (cuts) parts.push(cuts + (cuts === 1 ? " section" : " sections") + " to remove");
   if (adds.length) parts.push(adds.length + " to add");
   if (deletes.length) parts.push(deletes.length + " to remove");
   $("pendingCount").textContent = parts.join(" · ") || "Nothing to publish";
@@ -465,12 +502,12 @@ $("discardBtn").addEventListener("click", () => {
 });
 
 window.addEventListener("beforeunload", (e) => {
-  const { details, adds, deletes } = pendingChanges();
-  if (details || adds.length || deletes.length) e.preventDefault();
+  const { sections, details, adds, deletes } = pendingChanges();
+  if (sections.length || details || adds.length || deletes.length) e.preventDefault();
 });
 
 $("publishBtn").addEventListener("click", async () => {
-  const { details, adds, deletes } = pendingChanges();
+  const { sections, details, adds, deletes } = pendingChanges();
   const newDetails = currentDetails();
   const status = $("publishStatus");
   $("publishBtn").disabled = true;
@@ -496,12 +533,27 @@ $("publishBtn").addEventListener("click", async () => {
       tree.push({ path: "settings.json", mode: "100644", type: "blob",
                   content: JSON.stringify(newDetails, null, 2) + "\n" });
     }
+    // Removed chorus sections: write songs.json back without them. The
+    // build keeps chorus times of songs that haven't changed, so they stay gone.
+    if (sections.length) {
+      const list = {
+        seekStep: liveSongList.seekStep,
+        songs: liveSongList.songs.map((s) => {
+          const edited = sections.find((x) => x.path === s.src);
+          return edited ? { ...s, highlights: s.highlights.filter((t) => !edited.cut.has(t)) } : s;
+        }),
+      };
+      const json = JSON.stringify(list, null, 2)
+        .replace(/\[\s+([\d,\s]+?)\s+\]/g, (m, nums) => "[" + nums.replace(/\s+/g, "") + "]");
+      tree.push({ path: "music/songs.json", mode: "100644", type: "blob", content: json + "\n" });
+    }
 
     // 3. One commit with everything, then move the branch to it
     status.textContent = "Saving…";
     const newTree = await gh("/git/trees", { method: "POST", body: JSON.stringify({ base_tree: head.tree.sha, tree }) });
     const parts = [];
     if (details) parts.push("update wedding details");
+    if (sections.length) parts.push("remove chorus sections from " + sections.map((s) => songTitle(s.name)).join(", "));
     if (adds.length) parts.push("add " + adds.map((a) => a.name).join(", "));
     if (deletes.length) parts.push("remove " + deletes.map((d) => d.name).join(", "));
     const commit = await gh("/git/commits", {
@@ -512,6 +564,12 @@ $("publishBtn").addEventListener("click", async () => {
 
     // Saved. Show it as "processing" until the site is rebuilt.
     if (details) liveDetails = newDetails;
+    sections.forEach((s) => {
+      s.info.highlights = s.info.highlights.filter((t) => !s.cut.has(t));
+      const live = liveSongList.songs.find((x) => x.src === s.path);
+      if (live) live.highlights = s.info.highlights;
+      s.cut = null;
+    });
     songs = songs.filter((s) => s.status !== "delete");
     frames = frames.filter((f) => f.status !== "delete");
     [...songs, ...frames].forEach((x) => {

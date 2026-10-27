@@ -11,15 +11,16 @@
 const Sound = (() => {
   const M = CONFIG.MUSIC;
   M.SONGS = [];
+  let SEEK_STEP = 2;
 
-  // Song list + chorus times, made by tools/build-music.mjs.
+  // Song list + chorus times + seek tables, made by tools/build-music.mjs.
   // Loaded straight away so it's ready before the first tap.
   const songsLoaded = fetch("music/songs.json", { cache: "no-cache" })
     .then((res) => res.json())
-    .then((data) => { M.SONGS = data.songs || []; })
+    .then((data) => { M.SONGS = data.songs || []; SEEK_STEP = data.seekStep || 2; })
     .catch(() => console.warn("No music/songs.json - using the built-in melody"));
 
-  let ac = null;         // AudioContext
+  let ac = null;          // AudioContext
   let musicGain = null;   // master volume for the music (fade in/out, ducking)
   let fxGain = null;      // volume for beeps/shutter
   let playing = false;
@@ -27,10 +28,21 @@ const Sound = (() => {
 
   function unlock() {
     if (!ac) {
+      // iPhone: play like a music app, even with the silent switch on
+      try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
       ac = new (window.AudioContext || window.webkitAudioContext)();
+      // Safety limiter: louder songs are evened out (see loudness()), this
+      // catches any peaks so nothing ever distorts
+      const limiter = ac.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.25;
+      limiter.connect(ac.destination);
       musicGain = ac.createGain();
       musicGain.gain.value = 0;
-      musicGain.connect(ac.destination);
+      musicGain.connect(limiter);
       fxGain = ac.createGain();
       fxGain.gain.value = 0.5;
       fxGain.connect(ac.destination);
@@ -39,13 +51,18 @@ const Sound = (() => {
   }
 
   // =========================================================
-  //  Song player: two "decks" (A and B), like a DJ. One fades out
-  //  while the other comes in.
-  //  <audio> streams the file, so guests don't download whole songs.
+  //  Song player - all Web Audio, no <audio> elements.
   //
-  //  Each deck:  <audio> → filter → volume → speakers
-  //                          └────→ echo send → shared echo → speakers
+  //  Only the chorus clip is downloaded: songs.json has a seek table
+  //  (the byte where every 2 s of the mp3 starts), so we ask the server
+  //  for just those bytes (an HTTP "Range" request), decode them into
+  //  sound in memory, and play that.  ~1 MB per clip instead of 3-9 MB
+  //  per song. The next clip is downloaded while this one plays.
+  //
+  //  Two decks, like a DJ:  clip → filter → volume → music out
+  //                                  └──→ echo send → shared echo
   // =========================================================
+  const PAD = 1;          // extra second fetched each side (the decoder needs a run-up)
   let decks = null;
   let active = 0;         // which deck is playing now
   let nextTimer = null;
@@ -53,6 +70,10 @@ const Sound = (() => {
   let failures = 0;
   let queue = [];         // what's left to play this round
   let echoBus = null;
+  let upcoming = null;    // { gen, promise } the next clip, fetched + decoded ahead
+  let early = null;       // first clip's bytes, fetched before the first tap
+  let switching = false;  // a change of clip is in progress
+  const downloads = new Set();   // AbortControllers, so Stop cancels downloads
 
   function makeEchoBus() {
     echoBus = ac.createGain();
@@ -69,22 +90,18 @@ const Sound = (() => {
   }
 
   function makeDeck() {
-    const el = new Audio();
-    el.preload = "auto";
-    el.playsInline = true;
     const filter = ac.createBiquadFilter();
     const gain = ac.createGain();
     const send = ac.createGain();
-    ac.createMediaElementSource(el).connect(filter);
     filter.connect(gain).connect(musicGain);
     filter.connect(send).connect(echoBus);
-    const deck = { el, filter, gain, send };
+    const deck = { filter, gain, send, source: null, level: 1 };
     resetDeck(deck);
     gain.gain.value = 0;
     return deck;
   }
 
-  // Back to normal: no filter, no echo, normal speed
+  // Back to normal: no filter, no echo
   function resetDeck(d) {
     const t = ac.currentTime;
     d.filter.type = "lowpass";
@@ -93,15 +110,15 @@ const Sound = (() => {
     d.filter.Q.value = 0.7;
     d.send.gain.cancelScheduledValues(t);
     d.send.gain.setValueAtTime(0, t);
-    clearInterval(d.slowTimer);
-    d.el.playbackRate = 1;
-    setPreservePitch(d.el, true);
   }
 
-  function setPreservePitch(el, on) {
-    el.preservesPitch = on;
-    el.webkitPreservesPitch = on;
-    el.mozPreservesPitch = on;
+  // Stop the clip on a deck and let its memory go
+  function stopDeck(d) {
+    if (!d.source) return;
+    d.source.onended = null;
+    try { d.source.stop(); } catch (e) {}
+    d.source.disconnect();
+    d.source = null;
   }
 
   // Every highlight of every song is one "segment" (whole songs in "full"
@@ -113,7 +130,7 @@ const Sound = (() => {
       if (M.MODE === "highlights" && song.highlights && song.highlights.length) {
         song.highlights.forEach((t) => pool.push({ song, start: t }));
       } else {
-        pool.push({ song, start: null });   // null = decide once we know the length
+        pool.push({ song, start: null });   // null = a random spot (or 0 in "full" mode)
       }
     });
     return pool;
@@ -150,10 +167,100 @@ const Sound = (() => {
     return seg;
   }
 
-  function waitFor(el, event) {
-    return new Promise((resolve, reject) => {
-      el.addEventListener(event, resolve, { once: true });
-      el.addEventListener("error", () => reject(new Error("Can't load " + el.src)), { once: true });
+  // ---------- Downloading just the clip ----------
+  // Byte where the 2 s step at or before `t` starts, and that step's time
+  function seekBefore(song, t) {
+    t = Math.max(0, t);
+    if (song.seek && song.seek.length) {
+      const i = Math.min(song.seek.length - 1, Math.floor(t / SEEK_STEP));
+      return { byte: song.seek[i], time: i * SEEK_STEP };
+    }
+    // No seek table (old songs.json): assume a steady bitrate
+    return { byte: Math.floor((t / song.duration) * song.bytes), time: t };
+  }
+
+  // Byte where the step at or after `t` starts (end of the download)
+  function seekAfter(song, t) {
+    if (song.seek && song.seek.length) {
+      const i = Math.ceil(t / SEEK_STEP);
+      return i < song.seek.length ? song.seek[i] : song.bytes;
+    }
+    return Math.min(song.bytes, Math.ceil((t / song.duration) * song.bytes));
+  }
+
+  // Download the bytes for one segment. Returns { seg, data, offset, playFor }
+  // where offset = how far into the downloaded audio the clip starts.
+  async function fetchClip(seg) {
+    const song = seg.song;
+    const dur = song.duration || 0;
+    let start = M.MODE === "full" ? 0
+      : seg.start !== null ? seg.start
+      : dur * (0.2 + Math.random() * 0.5);   // no highlights: somewhere in the middle
+    start = Math.max(0, Math.min(start, dur - 10));
+    const playFor = M.MODE === "full" ? dur - start : Math.min(M.CLIP_SECONDS, dur - start);
+
+    // "full" mode plays whole songs, so it downloads whole files
+    const headers = {};
+    let from = { byte: 0, time: 0 };
+    if (M.MODE !== "full" && dur && song.bytes) {
+      from = seekBefore(song, start - PAD);
+      const to = seekAfter(song, start + playFor + PAD);
+      headers.Range = `bytes=${from.byte}-${to - 1}`;
+    }
+
+    const ctl = new AbortController();
+    downloads.add(ctl);
+    try {
+      const res = await fetch(encodeURI(song.src), { headers, signal: ctl.signal });
+      if (!res.ok) throw new Error("Can't load " + song.src);
+      // 206 = we got just the clip. 200 = the server sent the whole file
+      // (some local test servers can't do Range): fine, start from 0.
+      const t0 = res.status === 206 ? from.time : 0;
+      return { seg, data: await res.arrayBuffer(), offset: Math.max(0, start - t0), playFor };
+    } finally {
+      downloads.delete(ctl);
+    }
+  }
+
+  // Older Safari only has the callback form of decodeAudioData
+  const decode = (data) => new Promise((resolve, reject) => ac.decodeAudioData(data, resolve, reject));
+
+  async function decodeClip(f) {
+    const buffer = await decode(f.data);
+    f.data = null;   // the mp3 bytes aren't needed once decoded
+    return { ...f, buffer, offset: Math.min(f.offset, Math.max(0, buffer.duration - 1)), level: loudness(buffer) };
+  }
+
+  const loadClip = (seg) => fetchClip(seg).then(decodeClip);
+
+  // Songs are mastered at different volumes. Measure the clip (every
+  // 64th sample is plenty) and turn quiet ones up / loud ones down.
+  function loudness(buffer) {
+    let sum = 0, n = 0;
+    for (let c = 0; c < buffer.numberOfChannels; c++) {
+      const d = buffer.getChannelData(c);
+      for (let i = 0; i < d.length; i += 64) { sum += d[i] * d[i]; n++; }
+    }
+    const rms = Math.sqrt(sum / Math.max(1, n));
+    return rms ? Math.min(1.5, Math.max(0.5, 0.17 / rms)) : 1;
+  }
+
+  // Get the clip after this one ready in the background
+  function prefetch(gen) {
+    if (upcoming || gen !== generation || !playing) return;
+    const promise = loadClip(nextSegment());
+    promise.catch(() => {});   // handled when it's used
+    upcoming = { gen, promise };
+  }
+
+  // Before the first tap: download (not decode - that needs the tap) the
+  // first clip, so music starts almost as soon as the guest taps.
+  function preload() {
+    songsLoaded.then(() => {
+      if (early || !M.SONGS.length) return;
+      const promise = fetchClip(nextSegment());
+      promise.catch(() => {});
+      early = promise;
     });
   }
 
@@ -165,33 +272,21 @@ const Sound = (() => {
   }
 
   async function playNext(gen) {
-    if (gen !== generation) return;
+    if (gen !== generation || switching) return;
+    switching = true;
     clearTimeout(nextTimer);
-    const seg = nextSegment();
-    const oldDeck = decks[active];
-    const deck = decks[1 - active];
-    resetDeck(deck);
-    deck.gain.gain.cancelScheduledValues(ac.currentTime);
-    deck.gain.gain.setValueAtTime(0, ac.currentTime);
 
+    let clip;
     try {
-      deck.el.src = encodeURI(seg.song.src);
-      await waitFor(deck.el, "loadedmetadata");
-      if (gen !== generation) return;
-
-      const dur = deck.el.duration;
-      let start = seg.start;
-      if (M.MODE === "full") start = 0;
-      else if (start === null) {
-        // No highlights given: random spot between 20% and 70% of the song
-        start = dur * (0.2 + Math.random() * 0.5);
-      }
-      start = Math.max(0, Math.min(start, dur - 10));
-      deck.el.currentTime = start;
-      await deck.el.play();
-      if (gen !== generation) { deck.el.pause(); return; }
+      if (upcoming && upcoming.gen === gen) clip = await upcoming.promise;
+      else if (early) clip = await decodeClip(await early);
+      else clip = await loadClip(nextSegment());
       failures = 0;
     } catch (err) {
+      upcoming = null;
+      early = null;
+      switching = false;
+      if (gen !== generation) return;   // stopped meanwhile (download cancelled)
       console.warn(err);
       if (++failures >= M.SONGS.length * 2) {   // nothing plays: use the melody
         console.warn("Songs won't play, switching to built-in melody");
@@ -201,34 +296,55 @@ const Sound = (() => {
       nextTimer = setTimeout(() => playNext(gen), 500);
       return;
     }
+    upcoming = null;
+    early = null;
+    switching = false;
+    if (gen !== generation) return;
+
+    const oldDeck = decks[active];
+    const deck = decks[1 - active];
+    stopDeck(deck);
+    resetDeck(deck);
+    deck.gain.gain.cancelScheduledValues(ac.currentTime);
+    deck.gain.gain.setValueAtTime(0, ac.currentTime);
+    deck.level = clip.level;
+
+    const src = ac.createBufferSource();
+    src.buffer = clip.buffer;
+    src.connect(deck.filter);
+    src.start(ac.currentTime + 0.05, clip.offset);
+    deck.source = src;
+    // Safety net: if the next clip is late (slow internet, phone asleep),
+    // move on as soon as this one runs out instead of going silent
+    src.onended = () => { if (decks[active] === deck && deck.source === src) playNext(gen); };
 
     active = 1 - active;
-    const oldIsPlaying = !oldDeck.el.paused;
-    if (oldIsPlaying) {
+    if (oldDeck.source) {
       const name = M.TRANSITIONS[Math.floor(Math.random() * M.TRANSITIONS.length)];
       (TRANSITIONS[name] || TRANSITIONS.crossfade)(oldDeck, deck, M.CROSSFADE);
       console.log("Transition:", name);
     } else {
-      fade(deck.gain, 1, 1.5);   // very first song: gentle fade in
+      fade(deck.gain, deck.level, 1.5);   // very first song: gentle fade in
     }
-    // Once the old song is gone, stop it and clean up its effects
+    // Once the old clip has faded out: stop it, free its memory, and start
+    // getting the next clip ready
     setTimeout(() => {
-      if (decks[active] !== oldDeck) { oldDeck.el.pause(); resetDeck(oldDeck); }
+      if (decks[active] !== oldDeck) { stopDeck(oldDeck); resetDeck(oldDeck); }
+      prefetch(gen);
     }, (M.CROSSFADE + 2) * 1000);
 
     window.dispatchEvent(new CustomEvent("songchange", {
-      detail: { name: songName(seg.song.src), cover: seg.song.cover || null },
+      detail: { name: songName(clip.seg.song.src), cover: clip.seg.song.cover || null },
     }));
 
     // When to start the next one
-    const remaining = deck.el.duration - deck.el.currentTime;
-    const playFor = M.MODE === "full" ? remaining : Math.min(M.CLIP_SECONDS, remaining);
-    nextTimer = setTimeout(() => playNext(gen), Math.max(5, playFor - M.CROSSFADE) * 1000);
+    nextTimer = setTimeout(() => playNext(gen), Math.max(5, clip.playFor - M.CROSSFADE) * 1000);
   }
 
   // =========================================================
   //  DJ transitions. Each gets the outgoing deck, the incoming
   //  deck (already playing, at volume 0) and a length in seconds.
+  //  The incoming deck comes up to its own level (see loudness()).
   // =========================================================
   function ramp(param, to, start, seconds, curve, from = param.value) {
     param.cancelScheduledValues(start);
@@ -242,7 +358,7 @@ const Sound = (() => {
     crossfade(oldD, newD, T) {
       const t = ac.currentTime;
       ramp(oldD.gain.gain, 0, t, T);
-      ramp(newD.gain.gain, 1, t, T);
+      ramp(newD.gain.gain, newD.level, t, T);
     },
 
     // Old song gets muffled (like hearing it from another room) while
@@ -254,7 +370,7 @@ const Sound = (() => {
       ramp(oldD.gain.gain, 0, t, T);
       newD.filter.type = "highpass";
       ramp(newD.filter.frequency, 20, t, T, "exp", 1500);
-      ramp(newD.gain.gain, 1, t, T * 0.6, null, 0);
+      ramp(newD.gain.gain, newD.level, t, T * 0.6, null, 0);
     },
 
     // Old song is cut but keeps echoing away, new one drops in
@@ -263,22 +379,17 @@ const Sound = (() => {
       oldD.send.gain.setValueAtTime(1, t);       // feed the echo...
       ramp(oldD.gain.gain, 0, t, 0.4);           // ...cut the dry sound fast
       ramp(oldD.send.gain, 0, t + 0.5, 0.2, null, 1);   // stop feeding, repeats ring out
-      ramp(newD.gain.gain, 1, t + 1.2, Math.max(1, T * 0.5), null, 0);
+      ramp(newD.gain.gain, newD.level, t + 1.2, Math.max(1, T * 0.5), null, 0);
     },
 
-    // Old song slows to a stop like a record player losing power
+    // Old song slows to a stop like a record player losing power -
+    // speed AND pitch drop together, like a real turntable
     tapestop(oldD, newD) {
       const t = ac.currentTime;
       const STOP = 1.4;
-      setPreservePitch(oldD.el, false);          // let the pitch drop too
-      const started = performance.now();
-      oldD.slowTimer = setInterval(() => {
-        const p = Math.min(1, (performance.now() - started) / (STOP * 1000));
-        oldD.el.playbackRate = Math.max(0.25, 1 - 0.75 * p * p);
-        if (p >= 1) clearInterval(oldD.slowTimer);
-      }, 40);
+      if (oldD.source) ramp(oldD.source.playbackRate, 0.2, t, STOP, "exp", 1);
       ramp(oldD.gain.gain, 0, t + STOP * 0.7, STOP * 0.3);
-      ramp(newD.gain.gain, 1, t + STOP, 0.3, null, 0);   // new song slams in
+      ramp(newD.gain.gain, newD.level, t + STOP, 0.3, null, 0);   // new song slams in
     },
   };
 
@@ -375,12 +486,6 @@ const Sound = (() => {
     if (!decks) {
       makeEchoBus();
       decks = [makeDeck(), makeDeck()];
-      // iPhone: an <audio> may only play later if it played once during a tap
-      decks.forEach((d) => {
-        if (M.SONGS.length) d.el.src = encodeURI(M.SONGS[0].src);
-        d.el.play().catch(() => {});
-        d.el.pause();
-      });
     }
 
     // Song list is normally loaded long before the first tap, but just in case
@@ -395,6 +500,10 @@ const Sound = (() => {
     playing = false;
     generation++;
     clearTimeout(nextTimer);
+    downloads.forEach((ctl) => ctl.abort());   // don't keep using the guest's data
+    upcoming = null;
+    early = null;
+    switching = false;
     if (!ac) return;
     fade(musicGain, 0, 0.8);
     clearInterval(melodyTimer);   // notes already scheduled ring out under the fade
@@ -402,7 +511,7 @@ const Sound = (() => {
     setTimeout(() => {
       if (playing) return;   // turned back on during the fade
       decks?.forEach((d) => {
-        d.el.pause();
+        stopDeck(d);
         resetDeck(d);
         d.gain.gain.cancelScheduledValues(ac.currentTime);
         d.gain.gain.setValueAtTime(0, ac.currentTime);
@@ -458,13 +567,13 @@ const Sound = (() => {
   // True when the browser lets this page play sound before any tap.
   // Some computers allow it; phones never do.
   function canAutoplay() {
-    if (navigator.getAutoplayPolicy) return navigator.getAutoplayPolicy("mediaelement") === "allowed";
+    if (navigator.getAutoplayPolicy) return navigator.getAutoplayPolicy("audiocontext") === "allowed";
     unlock();
     return ac.state === "running";
   }
 
   return {
-    unlock, beep, shutter, duck, canAutoplay,
+    unlock, beep, shutter, duck, canAutoplay, preload,
     get playing() { return playing; },
     toggle() { playing ? stopMusic() : startMusic(); return playing; },
   };
