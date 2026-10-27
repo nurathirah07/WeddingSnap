@@ -63,6 +63,37 @@ const Mine = {
   token(id) { return this.all()[id]; },
 };
 
+// Private photos: kept only in this browser (IndexedDB), never uploaded.
+// Shown in the gallery's "Mine" tab for this guest only.
+const Private = {
+  db: null,
+  open() {
+    if (!this.db) this.db = new Promise((resolve, reject) => {
+      const req = indexedDB.open("weddingsnap", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("private", { keyPath: "id" });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return this.db;
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("private", mode);
+      const req = fn(tx.objectStore("private"));
+      tx.oncomplete = () => resolve(req && req.result);
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+  async add(blob) {
+    const id = "private-" + randomToken();
+    await this.run("readwrite", (s) => s.put({ id, blob, time: Date.now() }));
+    return id;
+  },
+  all()      { return this.run("readonly", (s) => s.getAll()).catch(() => []); },
+  remove(id) { return this.run("readwrite", (s) => s.delete(id)); },
+};
+
 // Draw `img` to fill (x, y, w, h) completely, cropping the overflow ("cover")
 function drawCover(ctx, img, x, y, w, h) {
   const iw = img.videoWidth || img.naturalWidth || img.width;
@@ -696,6 +727,20 @@ $("editBack").addEventListener("click", () => {
   show("booth");
 });
 
+// Public = album + everyone's gallery. Private = only on this phone.
+state.privacy = "public";
+document.querySelectorAll(".privOpt").forEach((opt) => opt.addEventListener("click", () => {
+  state.privacy = opt.dataset.privacy;
+  document.querySelectorAll(".privOpt").forEach((o) => {
+    o.classList.toggle("selected", o === opt);
+    o.setAttribute("aria-checked", o === opt);
+  });
+  const pub = state.privacy === "public";
+  $("doneBtn").textContent = pub ? "Done · Share to album" : "Done · Keep private";
+  $("privHint").textContent = pub ? "Goes to the couple's album and everyone's gallery"
+                                  : "Not uploaded. Only you can see it, on this phone";
+}));
+
 $("doneBtn").addEventListener("click", async () => {
   $("doneBtn").disabled = true;
   stopCamera();
@@ -709,39 +754,80 @@ $("doneBtn").addEventListener("click", async () => {
   $("resultImg").src = state.final.url;
   $("doneBtn").disabled = false;
   show("result");
-  upload();
+  if (state.privacy === "private") keepPrivate();
+  else upload();
 });
 
 // =========================================================
 //  5. RESULT  (upload + save)
 // =========================================================
+// Upload a JPEG (data: URL) to the Drive album. Returns the new photo's id.
+async function sendToAlbum(dataUrl) {
+  const token = randomToken();
+  // text/plain body = no CORS preflight, which Apps Script can't answer
+  const res = await fetch(CONFIG.SCRIPT_URL, {
+    method: "POST",
+    body: JSON.stringify({ action: "upload", image: dataUrl, token, layout: state.layoutId }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error);
+  Mine.add(data.id, token);
+  return data.id;
+}
+
+const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
+
+async function keepPrivate() {
+  const status = $("uploadStatus");
+  status.className = "uploadStatus";
+  try {
+    state.final.privateId = await Private.add(state.final.blob);
+    status.textContent = "🔒 Private: only you can see it, under Gallery → Mine. Save it to your phone to keep it for good.";
+  } catch (err) {
+    console.warn(err);
+    status.textContent = "🔒 Not shared. Save it to your phone below to keep it.";
+  }
+  $("makePublicBtn").classList.toggle("hidden", !CONFIG.SCRIPT_URL);
+}
+
+// Changed their mind on the result screen: share the private photo after all
+$("makePublicBtn").addEventListener("click", async () => {
+  $("makePublicBtn").classList.add("hidden");
+  const privateId = state.final.privateId;
+  if (await upload() && privateId) {
+    Private.remove(privateId).catch(() => {});
+    state.final.privateId = null;
+  }
+});
+
+// Returns true once the photo is in the album
 async function upload() {
   const status = $("uploadStatus");
+  $("makePublicBtn").classList.add("hidden");
   if (!CONFIG.SCRIPT_URL) {
     status.className = "uploadStatus";
     status.textContent = "Album not connected yet. Save it to your phone below 💛";
-    return;
+    return false;
   }
   status.className = "uploadStatus sending";
   status.textContent = "Sending to the couple's album…";
 
-  const token = randomToken();
   try {
-    // text/plain body = no CORS preflight, which Apps Script can't answer
-    const res = await fetch(CONFIG.SCRIPT_URL, {
-      method: "POST",
-      body: JSON.stringify({ action: "upload", image: state.final.dataUrl, token, layout: state.layoutId }),
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
-    Mine.add(data.id, token);
+    await sendToAlbum(state.final.dataUrl);
     status.className = "uploadStatus ok";
-    status.textContent = "Sent to the couple's album ✓";
+    status.textContent = "🌍 Shared to the couple's album ✓";
+    return true;
   } catch (err) {
     console.warn(err);
     status.className = "uploadStatus fail";
     status.innerHTML = 'Couldn\'t send (check your internet). <button class="btn link" id="retryUpload">Try again</button>';
     $("retryUpload").addEventListener("click", upload);
+    return false;
   }
 }
 
@@ -770,18 +856,27 @@ $("againBtn").addEventListener("click", () => {
 // =========================================================
 //  6. GALLERY
 // =========================================================
-let galleryPhotos = [];
-let galleryList = [];   // the photos showing right now (Everyone or Mine)
+let galleryPhotos = [];   // public photos in the Drive album
+let privatePhotos = [];   // this phone's private photos { id, time, private, blob, url }
+let galleryList = [];     // the photos showing right now (Everyone or Mine)
 let galleryTab = "all";
 const thumbUrl = (id, size) => `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
+const photoSrc = (p, size) => p.url || thumbUrl(p.id, size);
+
+async function loadPrivate() {
+  privatePhotos.forEach((p) => URL.revokeObjectURL(p.url));
+  privatePhotos = (await Private.all()).map((p) => ({ ...p, private: true, url: URL.createObjectURL(p.blob) }));
+}
 
 async function loadGallery() {
   const msg = $("galleryMsg");
+  await loadPrivate();
   if (!CONFIG.SCRIPT_URL) {
-    msg.textContent = "The gallery appears once the Google Drive album is connected (see README).";
-    $("galleryGrid").innerHTML = "";
+    galleryPhotos = [];
+    renderGallery();
     return;
   }
+  msg.classList.remove("count");
   msg.textContent = "Loading photos…";
   try {
     const res = await fetch(CONFIG.SCRIPT_URL + "?action=list");
@@ -797,21 +892,26 @@ async function loadGallery() {
 
 function renderGallery() {
   const mine = Mine.all();
-  const list = galleryTab === "mine" ? galleryPhotos.filter((p) => mine[p.id]) : galleryPhotos;
+  // Everyone = public album only. Mine = my public uploads + my private photos.
+  const list = galleryTab === "mine"
+    ? [...privatePhotos, ...galleryPhotos.filter((p) => mine[p.id])].sort((a, b) => b.time - a.time)
+    : galleryPhotos;
   galleryList = list;
   $("galleryMsg").classList.toggle("count", list.length > 0);   // plain text, not a card
   $("galleryMsg").textContent = list.length
     ? list.length + (list.length === 1 ? " photo" : " photos")
-    : galleryTab === "mine" ? "You haven't uploaded any photos yet." : "No photos yet. Be the first! 📸";
+    : galleryTab === "mine" ? "You haven't taken any photos yet."
+    : !CONFIG.SCRIPT_URL ? "The shared album isn't connected yet. Your own photos are under Mine."
+    : "No public photos yet. Be the first! 📸";
 
   const grid = $("galleryGrid");
   grid.innerHTML = "";
   list.forEach((p, i) => {
     const item = document.createElement("button");
-    item.className = "tile" + (mine[p.id] ? " mine" : "");
+    item.className = "tile" + (p.private ? " private" : mine[p.id] ? " mine" : "");
     const img = document.createElement("img");
     img.loading = "lazy";
-    img.src = thumbUrl(p.id, 500);
+    img.src = photoSrc(p, 500);
     img.alt = "";
     item.appendChild(img);
     item.setAttribute("aria-label", "View photo " + (i + 1));
@@ -851,20 +951,24 @@ function showPhoto(i) {
   // then swap in the sharp one once it has downloaded
   const img = $("lbImg");
   const id = lbPhoto.id;
-  img.src = thumbUrl(id, 500);
-  img.classList.add("loading");
-  const big = new Image();
-  big.onload = () => {
-    if (lbPhoto && lbPhoto.id === id) { img.src = big.src; img.classList.remove("loading"); }
-  };
-  big.src = thumbUrl(id, 1600);
+  img.src = photoSrc(lbPhoto, 500);
+  img.classList.toggle("loading", !lbPhoto.private);
+  if (!lbPhoto.private) {
+    const big = new Image();
+    big.onload = () => {
+      if (lbPhoto && lbPhoto.id === id) { img.src = big.src; img.classList.remove("loading"); }
+    };
+    big.src = thumbUrl(id, 1600);
+  }
   // Preload the neighbours so swiping feels instant
-  if (n > 1) [lbIndex + 1, lbIndex - 1].forEach((j) => { new Image().src = thumbUrl(galleryList[(j + n) % n].id, 1600); });
+  if (n > 1) [lbIndex + 1, lbIndex - 1].forEach((j) => { new Image().src = photoSrc(galleryList[(j + n) % n], 1600); });
 
   $("lbCount").textContent = n > 1 ? `${lbIndex + 1} / ${n}` : "";
   $("lbPrev").classList.toggle("hidden", n < 2);
   $("lbNext").classList.toggle("hidden", n < 2);
-  $("lbDelete").classList.toggle("hidden", !Mine.token(id));
+  $("lbDelete").classList.toggle("hidden", !lbPhoto.private && !Mine.token(id));
+  $("lbShare").classList.toggle("hidden", !lbPhoto.private || !CONFIG.SCRIPT_URL);
+  $("lbCount").textContent += lbPhoto.private ? (n > 1 ? "  ·  " : "") + "🔒 PRIVATE" : "";
 }
 
 function closeLightbox() {
@@ -902,10 +1006,38 @@ document.addEventListener("keydown", (e) => {
 
 // Drive images can't be read by our page (CORS), so open the download link
 $("lbSave").addEventListener("click", () => {
-  window.open(`https://drive.google.com/uc?export=download&id=${lbPhoto.id}`, "_blank");
+  if (lbPhoto.private) savePhoto(lbPhoto.blob, "wedding-snap-" + lbPhoto.time + ".jpg");
+  else window.open(`https://drive.google.com/uc?export=download&id=${lbPhoto.id}`, "_blank");
+});
+
+// Private → public: upload it, then forget the private copy
+$("lbShare").addEventListener("click", async () => {
+  if (!confirm("Share this photo to the couple's album? Everyone will be able to see it.")) return;
+  const photo = lbPhoto;
+  $("lbShare").disabled = true;
+  try {
+    await sendToAlbum(await blobToDataUrl(photo.blob));
+    await Private.remove(photo.id);
+    closeLightbox();
+    toast("🌍 Shared to the album");
+    loadGallery();
+  } catch (err) {
+    toast("Couldn't share: " + err.message);
+  }
+  $("lbShare").disabled = false;
 });
 
 $("lbDelete").addEventListener("click", async () => {
+  if (lbPhoto.private) {
+    if (!confirm("Delete this private photo? It isn't saved anywhere else.")) return;
+    await Private.remove(lbPhoto.id).catch(() => {});
+    URL.revokeObjectURL(lbPhoto.url);
+    privatePhotos = privatePhotos.filter((p) => p.id !== lbPhoto.id);
+    closeLightbox();
+    renderGallery();
+    toast("Photo deleted");
+    return;
+  }
   if (!confirm("Delete this photo from the album?")) return;
   try {
     const res = await fetch(CONFIG.SCRIPT_URL, {

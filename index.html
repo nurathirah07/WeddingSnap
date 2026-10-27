@@ -132,7 +132,17 @@
     </div>
 
     <div class="bottomBar">
-      <button class="btn primary big" id="doneBtn">Done · Send to album</button>
+      <!-- Who can see the photo. Private photos never leave the phone. -->
+      <div class="privacy" role="radiogroup" aria-label="Who can see this photo">
+        <button class="privOpt selected" data-privacy="public" role="radio" aria-checked="true">
+          🌍 Public
+        </button>
+        <button class="privOpt" data-privacy="private" role="radio" aria-checked="false">
+          🔒 Private
+        </button>
+      </div>
+      <p class="privHint" id="privHint">Goes to the couple's album and everyone's gallery</p>
+      <button class="btn primary big" id="doneBtn">Done · Share to album</button>
     </div>
   </section>
 
@@ -144,11 +154,13 @@
       </div>
       <p class="uploadStatus" id="uploadStatus"></p>
 
+      <button class="btn ghost small hidden" id="makePublicBtn">🌍 Share to the album instead</button>
+
       <div class="row">
         <button class="btn primary" id="saveBtn">Save to phone</button>
         <button class="btn ghost" id="againBtn">Take another</button>
       </div>
-      <button class="btn link" data-go="gallery">See everyone's photos →</button>
+      <button class="btn link" data-go="gallery">See the gallery →</button>
     </div>
   </section>
 
@@ -181,7 +193,8 @@
     </div>
     <div class="row">
       <button class="btn primary" id="lbSave">Save</button>
-      <button class="btn danger hidden" id="lbDelete">Delete my upload</button>
+      <button class="btn ghost light hidden" id="lbShare">🌍 Share to album</button>
+      <button class="btn danger hidden" id="lbDelete">Delete</button>
     </div>
   </div>
 

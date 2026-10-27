@@ -593,7 +593,7 @@ body.musicOn #npState::before {
 }
 #preview {
   max-width: 100%;
-  max-height: 46vh;
+  max-height: 38vh;
   border-radius: 4px;
   box-shadow: 0 20px 44px rgba(74, 40, 48, 0.24), 0 2px 6px rgba(42, 31, 34, 0.1);
   cursor: pointer;
@@ -648,9 +648,32 @@ body.musicOn #npState::before {
 .swatch.selected span, .swatch.selected canvas { outline-color: var(--accent); }
 .swatch.selected small { color: var(--ink); font-weight: 500; }
 
+/* Public / Private switch above the Done button */
+.privacy {
+  display: flex;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-line);
+}
+.privOpt {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 9px;
+  border-radius: 999px;
+  font-size: 14px;
+  color: var(--muted);
+  transition: background 0.2s, color 0.2s;
+}
+.privOpt.selected { background: var(--ink); color: var(--bg); }
+.privHint { margin: 6px 0 10px; text-align: center; font-size: 12px; color: var(--muted); }
+
 .bottomBar {
   margin: auto -20px calc(-24px - env(safe-area-inset-bottom));
-  padding: 26px 20px calc(16px + env(safe-area-inset-bottom));
+  padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
   position: sticky;
   bottom: 0;
   background: linear-gradient(rgba(248, 241, 238, 0), rgba(248, 241, 238, 0.92) 45%);
@@ -776,8 +799,10 @@ body.musicOn #npState::before {
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
 }
-.tile.mine::after {
-  content: "Mine";
+.tile.mine::after { content: "Mine"; }
+.tile.private::after { content: "🔒 Private"; }
+.tile.mine::after,
+.tile.private::after {
   position: absolute;
   top: 8px; left: 8px;
   background: var(--card);
@@ -841,6 +866,8 @@ body.musicOn #npState::before {
 #lbNext { right: 4px; }
 body:has(#lightbox:not(.hidden)) .musicBtn { display: none; }
 .lightbox .btn.primary { background: #fff; color: var(--ink); }
+.lightbox .btn.light { color: #fff; border-color: rgba(255, 255, 255, 0.6); background: transparent; }
+.lightbox .row { flex-wrap: wrap; }
 
 /* ---------- Toast (top of the screen, out of the way of buttons) ---------- */
 .toast {
