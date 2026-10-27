@@ -70,7 +70,10 @@ function withCover(song, cover) {
 const json = JSON.stringify({ seekStep: SEEK_STEP, songs }, null, 2)
   .replace(/\[\s+([\d,\s]+?)\s+\]/g, (m, list) => "[" + list.replace(/\s+/g, "") + "]");
 fs.writeFileSync(OUT_FILE, json + "\n");
-console.log(`\nWrote ${OUT_FILE} with ${songs.length} song(s).`);
+// Same list as a script, for when index.html is opened straight from the
+// folder (file://), where browsers won't let the page read songs.json
+fs.writeFileSync(path.join(MUSIC_DIR, "songs.js"), "window.SONGS_DATA = " + json + ";\n");
+console.log(`\nWrote ${OUT_FILE} (+ songs.js) with ${songs.length} song(s).`);
 
 // ---------------------------------------------------------
 // Seek table: walk the mp3's frame headers (no decoding needed) and note

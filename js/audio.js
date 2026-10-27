@@ -13,10 +13,26 @@ const Sound = (() => {
   M.SONGS = [];
   let SEEK_STEP = 2;
 
+  // Opened straight from the folder (index.html double-clicked, no server).
+  // Browsers block fetch() on file:// pages, so the song list comes from
+  // music/songs.js instead and songs play through <audio> players (see below).
+  const LOCAL = location.protocol === "file:";
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
   // Song list + chorus times + seek tables, made by tools/build-music.mjs.
   // Loaded straight away so it's ready before the first tap.
-  const songsLoaded = fetch("music/songs.json", { cache: "no-cache" })
-    .then((res) => res.json())
+  const songsLoaded = (LOCAL
+      ? loadScript("music/songs.js").then(() => window.SONGS_DATA || {})
+      : fetch("music/songs.json", { cache: "no-cache" }).then((res) => res.json()))
     .then((data) => { M.SONGS = data.songs || []; SEEK_STEP = data.seekStep || 2; })
     .catch(() => console.warn("No music/songs.json - using the built-in melody"));
 
@@ -188,16 +204,23 @@ const Sound = (() => {
     return Math.min(song.bytes, Math.ceil((t / song.duration) * song.bytes));
   }
 
-  // Download the bytes for one segment. Returns { seg, data, offset, playFor }
-  // where offset = how far into the downloaded audio the clip starts.
-  async function fetchClip(seg) {
-    const song = seg.song;
-    const dur = song.duration || 0;
+  // Where in the song a segment starts, and how long it plays
+  function clipTimes(seg) {
+    const dur = seg.song.duration || 0;
     let start = M.MODE === "full" ? 0
       : seg.start !== null ? seg.start
       : dur * (0.2 + Math.random() * 0.5);   // no highlights: somewhere in the middle
     start = Math.max(0, Math.min(start, dur - 10));
     const playFor = M.MODE === "full" ? dur - start : Math.min(M.CLIP_SECONDS, dur - start);
+    return { start, playFor };
+  }
+
+  // Download the bytes for one segment. Returns { seg, data, offset, playFor }
+  // where offset = how far into the downloaded audio the clip starts.
+  async function fetchClip(seg) {
+    const song = seg.song;
+    const dur = song.duration || 0;
+    const { start, playFor } = clipTimes(seg);
 
     // "full" mode plays whole songs, so it downloads whole files
     const headers = {};
@@ -258,7 +281,7 @@ const Sound = (() => {
   function preload() {
     songsLoaded.then(() => {
       if (early || !M.SONGS.length) return;
-      const promise = fetchClip(nextSegment());
+      const promise = LOCAL ? openClip(nextSegment()) : fetchClip(nextSegment());
       promise.catch(() => {});
       early = promise;
     });
@@ -333,12 +356,107 @@ const Sound = (() => {
       prefetch(gen);
     }, (M.CROSSFADE + 2) * 1000);
 
-    window.dispatchEvent(new CustomEvent("songchange", {
-      detail: { name: songName(clip.seg.song.src), cover: clip.seg.song.cover || null },
-    }));
+    announce(clip.seg.song);
 
     // When to start the next one
     nextTimer = setTimeout(() => playNext(gen), Math.max(5, clip.playFor - M.CROSSFADE) * 1000);
+  }
+
+  function announce(song) {
+    window.dispatchEvent(new CustomEvent("songchange", {
+      detail: { name: songName(song.src), cover: song.cover || null },
+    }));
+  }
+
+  // =========================================================
+  //  Song player for file:// pages (no server).
+  //  Same chorus clips and shuffle, played by <audio> players and
+  //  crossfaded by turning their volume up and down. (No DJ effects:
+  //  Web Audio can't read local files.)
+  // =========================================================
+  const players = new Set();   // <audio> players playing or fading out
+  let current = null;          // the one playing now
+  const master = { from: 0, to: 0, start: 0, dur: 1 };   // overall music volume
+
+  // A volume that moves in a straight line from `from` to `to`
+  const now = () => performance.now() / 1000;
+  const levelOf = (r) => r.from + (r.to - r.from) * Math.min(1, (now() - r.start) / r.dur);
+  const rampLevel = (r, to, seconds) =>
+    Object.assign(r, { from: levelOf(r), to, start: now(), dur: Math.max(0.01, seconds) });
+
+  if (LOCAL) setInterval(() => {
+    const m = levelOf(master);
+    players.forEach((el) => { el.volume = Math.max(0, Math.min(1, m * levelOf(el.fade))); });
+  }, 50);
+
+  // Load a song into a new player and jump to the clip
+  function openClip(seg) {
+    const { start, playFor } = clipTimes(seg);
+    const el = new Audio();
+    el.preload = "auto";
+    el.volume = 0;
+    el.fade = { from: 0, to: 0, start: 0, dur: 1 };
+    return new Promise((resolve, reject) => {
+      el.onloadedmetadata = () => { el.currentTime = start; resolve({ seg, el, playFor }); };
+      el.onerror = () => reject(new Error("Can't load " + seg.song.src));
+      el.src = encodeURI(seg.song.src);
+    });
+  }
+
+  function release(el) {
+    if (el === current) return;
+    el.pause();
+    el.removeAttribute("src");
+    el.load();   // lets the browser free the file
+    players.delete(el);
+  }
+
+  async function playNextLocal(gen) {
+    if (gen !== generation || switching) return;
+    switching = true;
+    clearTimeout(nextTimer);
+
+    let clip;
+    try {
+      clip = await (early || openClip(nextSegment()));
+      early = null;
+      if (gen !== generation) { switching = false; return; }
+      await clip.el.play();
+      failures = 0;
+    } catch (err) {
+      early = null;
+      switching = false;
+      if (gen !== generation) return;
+      console.warn(err);
+      if (++failures >= M.SONGS.length * 2) {
+        console.warn("Songs won't play, switching to built-in melody");
+        M.SONGS = [];
+        return startMelody();
+      }
+      nextTimer = setTimeout(() => playNextLocal(gen), 500);
+      return;
+    }
+    switching = false;
+    if (gen !== generation) { clip.el.pause(); return; }
+
+    const old = current;
+    const el = clip.el;
+    players.add(el);
+    current = el;
+    rampLevel(el.fade, 1, old ? M.CROSSFADE : 1.5);
+    if (old) rampLevel(old.fade, 0, M.CROSSFADE);
+    el.onended = () => { if (current === el) playNextLocal(gen); };   // safety net
+    // After the crossfade: free the old player, get the next clip ready
+    setTimeout(() => {
+      if (old) release(old);
+      if (gen === generation && playing && !early) {
+        early = openClip(nextSegment());
+        early.catch(() => {});
+      }
+    }, (M.CROSSFADE + 0.5) * 1000);
+
+    announce(clip.seg.song);
+    nextTimer = setTimeout(() => playNextLocal(gen), Math.max(5, clip.playFor - M.CROSSFADE) * 1000);
   }
 
   // =========================================================
@@ -477,11 +595,16 @@ const Sound = (() => {
   const MUSIC_VOLUME = 0.8;
   let ducked = false;
 
+  function setVolume(to, seconds) {
+    fade(musicGain, to, seconds);
+    if (LOCAL) rampLevel(master, to, seconds);
+  }
+
   function startMusic() {
     unlock();
     playing = true;
     const gen = ++generation;
-    fade(musicGain, ducked ? MUSIC_VOLUME * 0.25 : MUSIC_VOLUME, 1.5);
+    setVolume(ducked ? MUSIC_VOLUME * 0.25 : MUSIC_VOLUME, 1.5);
 
     if (!decks) {
       makeEchoBus();
@@ -491,7 +614,7 @@ const Sound = (() => {
     // Song list is normally loaded long before the first tap, but just in case
     songsLoaded.then(() => {
       if (gen !== generation) return;
-      if (M.SONGS.length) playNext(gen);
+      if (M.SONGS.length) (LOCAL ? playNextLocal : playNext)(gen);
       else startMelody();
     });
   }
@@ -505,11 +628,13 @@ const Sound = (() => {
     early = null;
     switching = false;
     if (!ac) return;
-    fade(musicGain, 0, 0.8);
+    setVolume(0, 0.8);
     clearInterval(melodyTimer);   // notes already scheduled ring out under the fade
     melodyTimer = null;
     setTimeout(() => {
       if (playing) return;   // turned back on during the fade
+      current = null;
+      players.forEach(release);
       decks?.forEach((d) => {
         stopDeck(d);
         resetDeck(d);
@@ -522,7 +647,7 @@ const Sound = (() => {
   // Turn the music down during the countdown so the beeps stand out
   function duck(on) {
     ducked = on;
-    if (ac && playing) fade(musicGain, on ? MUSIC_VOLUME * 0.25 : MUSIC_VOLUME, 0.4);
+    if (ac && playing) setVolume(on ? MUSIC_VOLUME * 0.25 : MUSIC_VOLUME, 0.4);
   }
 
   // =========================================================

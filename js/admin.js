@@ -546,6 +546,8 @@ $("publishBtn").addEventListener("click", async () => {
       const json = JSON.stringify(list, null, 2)
         .replace(/\[\s+([\d,\s]+?)\s+\]/g, (m, nums) => "[" + nums.replace(/\s+/g, "") + "]");
       tree.push({ path: "music/songs.json", mode: "100644", type: "blob", content: json + "\n" });
+      tree.push({ path: "music/songs.js", mode: "100644", type: "blob",
+                  content: "window.SONGS_DATA = " + json + ";\n" });
     }
 
     // 3. One commit with everything, then move the branch to it
