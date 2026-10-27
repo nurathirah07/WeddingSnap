@@ -934,8 +934,11 @@ body:has(#lightbox:not(.hidden)) .musicBtn { display: none; }
   font-size: 12px;
   color: var(--muted);
 }
-.steps li { display: flex; align-items: center; gap: 6px; }
-.steps b {
+/* numbers come from CSS, so without styles it's still a normal "1. 2. 3." list */
+.steps { counter-reset: step; }
+.steps li { display: flex; align-items: center; gap: 6px; counter-increment: step; }
+.steps li::before {
+  content: counter(step);
   width: 20px; height: 20px;
   border-radius: 50%;
   border: 1px solid currentColor;

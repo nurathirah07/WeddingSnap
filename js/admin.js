@@ -4,7 +4,7 @@
 //  The GitHub Action (.github/workflows/deploy.yml) then finds the
 //  chorus + photo windows and republishes the site.
 // =========================================================
-import { findWindows, pickLayout, frameId } from "./frame-detect.js";
+import { findWindows, pickLayout, frameId } from "./frame-detect.js?v=dev";
 
 const $ = (id) => document.getElementById(id);
 const TOKEN_KEY = "weddingsnap.admin.token";
