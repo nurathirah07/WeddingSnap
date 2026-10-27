@@ -105,5 +105,17 @@
 
   <script src="js/config.js"></script>
   <script type="module" src="js/admin.js"></script>
+  <script>
+    // Browsers block this page's script when it's opened as a file
+    // (double-click / file:///...). Explain instead of doing nothing.
+    if (location.protocol === "file:") {
+      document.getElementById("connectError").innerHTML =
+        "This page must be opened through a web server, not as a file.<br>" +
+        "On your computer: run <code>npx serve -l 8000</code> in the project folder, then open " +
+        "<a href='http://localhost:8000/admin.html'>http://localhost:8000/admin.html</a>.<br>" +
+        "Online: use https://&lt;username&gt;.github.io/WeddingSnap/admin.html";
+      document.getElementById("connectBtn").disabled = true;
+    }
+  </script>
 </body>
 </html>

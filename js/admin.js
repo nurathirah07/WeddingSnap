@@ -104,7 +104,12 @@ if (savedToken) {
 $("connectBtn").addEventListener("click", connect);
 
 async function connect() {
-  repo  = $("repoInput").value.trim().replace(/^https:\/\/github\.com\//, "").replace(/\/$/, "");
+  // Accept "user/repo", "https://github.com/user/repo" or ".../repo.git"
+  repo  = $("repoInput").value.trim()
+    .replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "");
+  $("repoInput").value = repo;
   token = $("tokenInput").value.trim();
   $("connectError").textContent = "";
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !token) {
@@ -472,7 +477,7 @@ async function watchDeploy(sha) {
       $("pendingCount").textContent = "Live ✓";
       status.textContent = "Guests get the new songs and frames next time they open the app.";
       toast("Published!");
-      setTimeout(() => loadLibrary(), 3000);
+      setTimeout(() => loadLibrary(), 6000);   // refresh chorus times + photo areas
       return;
     } else {
       $("pendingCount").textContent = "Publishing failed";

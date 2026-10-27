@@ -68,30 +68,34 @@ const LAYOUTS = {
 };
 
 // ---------------------------------------------------------
-//  Frames
-//  - "theme" frames below are drawn by code and work with EVERY layout.
-//  - Your Canva PNGs: just drop them into frames/ and push to GitHub.
-//    The photo windows + layout are found automatically and saved in
-//    frames/frames.json (edit that file to fine-tune names or positions).
+//  Frames: photobooth strip papers + wedding palettes
 // ---------------------------------------------------------
 const FRAMES = [
-  { id: "noir",  name: "Noir",  type: "theme", bg: "#141211", text: "#f4ede4", sub: "#b9aea3" },
-  { id: "ivory", name: "Ivory", type: "theme", bg: "#faf6ef", text: "#6b4f3f", sub: "#a08878" },
-  { id: "blush", name: "Blush", type: "theme", bg: "#d99aa1", text: "#fff8f4", sub: "#fde9e6", gradient: "#c97b84" },
-  { id: "sage",  name: "Sage",  type: "theme", bg: "#a9b79a", text: "#fbfaf5", sub: "#eef1e7", gradient: "#8e9f7f" },
-  { id: "film",  name: "Film",  type: "theme", bg: "#0c0c0c", text: "#f2f2f2", sub: "#9a9a9a", film: true },
+  // Classic booth strips
+  { id: "booth",     name: "Classic Booth", type: "theme", bg: "#ffffff", text: "#1a1a1a", sub: "#707070" },
+  { id: "darkroom",  name: "Darkroom",      type: "theme", bg: "#0e0e0e", text: "#ffffff", sub: "#8c8c8c" },
+  { id: "35mm",      name: "35mm Film",     type: "theme", bg: "#111111", text: "#f2e6c9", sub: "#9a8f78", film: true },
+  { id: "kraft",     name: "Kraft Paper",   type: "theme", bg: "#c9a47c", text: "#3e2a1c", sub: "#5e4532" },
+  { id: "curtain",   name: "Red Curtain",   type: "theme", bg: "#b3261e", text: "#fff4e0", sub: "#ffd9c7", gradient: "#7f1a14" },
+
+  // Wedding palettes
+  { id: "emerald",   name: "Emerald & Gold", type: "theme", bg: "#0f4c3a", text: "#e6c77a", sub: "#cdb88a", gradient: "#0a3529" },
+  { id: "burgundy",  name: "Burgundy",       type: "theme", bg: "#7a1f2b", text: "#f3d9a4", sub: "#e8c6c0", gradient: "#55141d" },
+  { id: "champagne", name: "Champagne",      type: "theme", bg: "#efe2cc", text: "#7a5a35", sub: "#9c7f5c", gradient: "#e0caa6" },
+  { id: "rose",      name: "Dusty Rose",     type: "theme", bg: "#d8a7a7", text: "#fffaf6", sub: "#fbe6e3", gradient: "#c08588" },
 ];
 
 // ---------------------------------------------------------
-//  Filters. Same recipe is used for the live preview (CSS) and
-//  for the saved photo (pixel maths), so what you see = what you get.
+//  Filters: film and booth looks (order of ops matters)
 // ---------------------------------------------------------
 const FILTERS = [
-  { id: "none",    name: "Original", ops: [] },
-  { id: "classic", name: "Classic",  ops: [["grayscale", 1], ["contrast", 1.35], ["brightness", 1.05]] },
-  { id: "mono",    name: "Soft B&W", ops: [["grayscale", 1], ["contrast", 0.95], ["brightness", 1.1]] },
-  { id: "warm",    name: "Warm",     ops: [["sepia", 0.25], ["saturate", 1.2], ["brightness", 1.05]] },
-  { id: "vintage", name: "Vintage",  ops: [["sepia", 0.5], ["contrast", 0.9], ["brightness", 1.1], ["saturate", 0.8]] },
-  { id: "dreamy",  name: "Dreamy",   ops: [["brightness", 1.12], ["contrast", 0.88], ["saturate", 0.85]] },
-  { id: "pop",     name: "Pop",      ops: [["saturate", 1.4], ["contrast", 1.1]] },
+  { id: "none",       name: "Original",      ops: [] },
+  { id: "booth",      name: "Booth B&W",     ops: [["grayscale", 1], ["contrast", 1.55], ["brightness", 1.1]] },
+  { id: "silver",     name: "Silver Print",  ops: [["grayscale", 1], ["sepia", 0.15], ["contrast", 1.25], ["brightness", 1.05]] },
+  { id: "sepia",      name: "Old Booth",     ops: [["grayscale", 1], ["sepia", 0.85], ["contrast", 1.15], ["brightness", 1.05]] },
+  { id: "flash",      name: "Party Flash",   ops: [["brightness", 1.18], ["contrast", 1.3], ["saturate", 1.2]] },
+  { id: "disposable", name: "Disposable",    ops: [["sepia", 0.2], ["saturate", 1.35], ["contrast", 1.15], ["brightness", 1.05]] },
+  { id: "instant",    name: "Instant Film",  ops: [["sepia", 0.22], ["contrast", 0.9], ["brightness", 1.12], ["saturate", 0.85]] },
+  { id: "faded",      name: "Faded 70s",     ops: [["sepia", 0.4], ["saturate", 0.7], ["contrast", 0.82], ["brightness", 1.12]] },
+  { id: "golden",     name: "Golden Hour",   ops: [["sepia", 0.3], ["saturate", 1.3], ["brightness", 1.08]] },
 ];

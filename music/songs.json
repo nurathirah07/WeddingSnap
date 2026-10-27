@@ -10,12 +10,30 @@
       ]
     },
     {
+      "src": "music/Hari Ini.mp3",
+      "bytes": 3453033,
+      "duration": 220,
+      "highlights": [
+        125,
+        165
+      ]
+    },
+    {
       "src": "music/Kembali Pulang.mp3",
       "bytes": 4991823,
       "duration": 208,
       "highlights": [
         120,
         161
+      ]
+    },
+    {
+      "src": "music/Ruang & Waktu.mp3",
+      "bytes": 2738158,
+      "duration": 170,
+      "highlights": [
+        105,
+        146
       ]
     },
     {
@@ -28,6 +46,14 @@
         577,
         644,
         732
+      ]
+    },
+    {
+      "src": "music/jatuh cinta lagi.mp3",
+      "bytes": 5976621,
+      "duration": 249,
+      "highlights": [
+        188
       ]
     }
   ]

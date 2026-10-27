@@ -22,11 +22,13 @@ No app download, no login. Total cost: RM0.
 
 ```
 index.html           page structure (all screens)
+admin.html           admin page: add/remove songs + frames (js/admin.js)
 css/style.css        design
 js/config.js         ⭐ SETTINGS: names, date, frames, filters, layouts
 js/app.js            booth logic, canvas drawing, upload, gallery
 js/filters.js        filter maths (works on iPhone too)
 js/audio.js          music + sound effects
+js/frame-detect.js   finds photo windows in a frame (used by admin + build)
 frames/              drop Canva PNGs here (frames.json is made automatically)
 music/               drop mp3s here (songs.json is made automatically)
 tools/               build-music.mjs (finds choruses), build-frames.mjs
@@ -38,6 +40,17 @@ apps-script/Code.gs  Google Drive backend
 ## 1. Personalise
 
 Edit `js/config.js` and set `TITLE`, `COUPLE` and `DATE`.
+
+## Admin page (add songs and frames without code)
+
+Open `https://<username>.github.io/<repo>/admin.html`. It isn't linked from the app, and it can't do anything without a token.
+
+1. **Connect:** paste a GitHub token. The page explains how to make one: a fine-grained token for this repo only, with **Contents: Read and write** and **Actions: Read-only**. Give it an expiry date after the wedding.
+2. **Add songs:** add mp3s, listen to them and remove old ones. Each song shows its chorus times with ▶ buttons.
+3. **Add frames:** add PNGs. Pink boxes appear right away to show where the photos will go, along with the layout. If a frame has no photo area, it's flagged and skipped.
+4. **Publish:** all changes go to GitHub in one commit. The Action then finds the choruses and photo windows and republishes the app. The page shows progress until it says **Live ✓**, which takes about 1–2 minutes.
+
+The token is saved only in that browser (untick "Remember" to forget it when the tab closes). Treat it like a password, and delete it on GitHub after the wedding.
 
 ## 2. Add your Canva frames
 

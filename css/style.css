@@ -18,7 +18,8 @@
 
 html, body {
   margin: 0;
-  background: var(--bg);
+  /* still picture shows instantly / when the phone blocks video autoplay */
+  background: var(--bg) url("background.jpg") center / cover fixed;
   color: var(--ink);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
@@ -44,6 +45,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .screen.active { display: flex; }
 .screen.dark { max-width: none; background: var(--dark); color: #f4ede4; }
 body:has(#booth.active) { background: var(--dark); }
+
+/* Moving curtain behind every screen (except the dark booth) */
+.bgVideo {
+  position: fixed; inset: 0; z-index: -1;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+body:has(#booth.active) .bgVideo { display: none; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
