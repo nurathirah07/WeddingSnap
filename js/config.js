@@ -9,7 +9,7 @@ const CONFIG = {
 
   // Paste your Google Apps Script "Web app" URL here (see README.md).
   // Leave empty to run without uploads (save-to-phone still works).
-  SCRIPT_URL: "",
+  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwxHUkODkn8qyyOnLb0nY7cNJh5WU_CsqRUbo23PxCMDEHszvdnPJE_LmEi-09Ho9k/exec",
 
   // Background music: starts on the guest's first tap, plays every song
   // in shuffled order, then reshuffles and repeats forever.

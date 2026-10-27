@@ -12,7 +12,8 @@ const CACHE_KEY = "photo-list";
 
 // GET ?action=list  → { ok, photos: [{ id, time }] }  newest first
 function doGet(e) {
-  const action = (e.parameter && e.parameter.action) || "list";
+  // e is missing when you press Run on doGet in the editor - just list photos then
+  const action = (e && e.parameter && e.parameter.action) || "list";
   if (action === "list") return json(listPhotos());
   return json({ ok: false, error: "Unknown action" });
 }

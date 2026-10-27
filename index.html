@@ -74,8 +74,12 @@
         <div id="countdown"><span id="countNum"></span><small id="countHint">Get ready</small></div>
         <div id="flash"></div>
         <div id="camError" class="hidden">
-          <p>Camera not available.</p>
-          <small>Allow camera access, or pick photos from your gallery instead.</small>
+          <p id="camErrTitle">Camera not available</p>
+          <small id="camErrHelp"></small>
+          <div class="row">
+            <button class="btn small light" id="camRetry">Try again</button>
+            <label class="btn small outline" for="pickFile">Choose from gallery</label>
+          </div>
         </div>
       </div>
     </div>

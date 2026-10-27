@@ -265,13 +265,52 @@ async function startCamera() {
     $("shutterBtn").disabled = false;
   } catch (err) {
     console.warn(err);
-    $("camError").classList.remove("hidden");
+    showCamError(err);
     $("shutterBtn").disabled = true;
   }
 
   // Keep the screen awake while in the booth
   try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
 }
+
+// Tell the guest exactly why the camera didn't start and how to fix it.
+// (Phones never show the "Allow camera?" question on http:// pages or
+// inside WhatsApp / Instagram browsers - they just refuse.)
+function showCamError(err) {
+  const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const inApp = /FBAN|FBAV|Instagram|Line\/|LinkedInApp|WhatsApp|TikTok|Snapchat|; wv\)/i.test(navigator.userAgent);
+  const browser = iOS ? "Safari" : "Chrome";
+  let title = "Camera not available", help;
+
+  if (!window.isSecureContext) {
+    title = "Camera blocked on this link";
+    help = "Phones only allow the camera on https:// links. Open the https:// link of this site instead.";
+  } else if (inApp || !navigator.mediaDevices) {
+    title = "Open in " + browser;
+    help = iOS ? "This app's browser can't use the camera. Tap ⋯ or the share icon → Open in Safari."
+               : "This app's browser can't use the camera. Tap ⋮ → Open in Chrome.";
+  } else if (err && err.name === "NotAllowedError") {
+    title = "Camera access is off";
+    help = iOS ? "Tap aA in the address bar → Website Settings → Camera → Allow, then Try again. " +
+                 "Still nothing? iPhone Settings → Safari → Camera → Ask."
+               : "Tap the icon left of the web address → Permissions → Camera → Allow, then Try again. " +
+                 "Still nothing? Phone Settings → Apps → Chrome → Permissions → Camera → Allow.";
+  } else if (err && err.name === "NotFoundError") {
+    help = "No camera found on this device.";
+  } else if (err && err.name === "NotReadableError") {
+    help = "Another app is using the camera. Close it, then Try again.";
+  } else {
+    help = "Something stopped the camera. Try again, or use a photo from your gallery.";
+  }
+  $("camErrTitle").textContent = title;
+  $("camErrHelp").textContent = help + " You can also choose photos from your gallery.";
+  $("camError").classList.remove("hidden");
+}
+
+$("camRetry").addEventListener("click", () => {
+  $("camError").classList.add("hidden");
+  startCamera();
+});
 
 function stopCamera() {
   if (state.stream) state.stream.getTracks().forEach((t) => t.stop());
