@@ -39,11 +39,14 @@ for (const file of files) {
   }
   const bytes = fs.statSync(src).size;
   const cover = findCover(file);
-  const before = old.find((s) => s.src === src && s.bytes === bytes);
+  // Same file as before - also when it was only renamed (same size), so
+  // chorus sections removed in admin stay removed
+  const before = old.find((s) => s.src === src && s.bytes === bytes) ||
+                 old.find((s) => s.bytes === bytes && !files.includes(s.src.split("/").pop()));
   if (before) {
-    console.log(`✓ ${file} (unchanged)`);
+    console.log(`✓ ${file} (${before.src === src ? "unchanged" : "renamed"})`);
     // Seek table is quick to make (no decoding), so older entries just get one
-    songs.push(withCover({ ...before, seek: before.seek || seekTable(src) }, cover));
+    songs.push(withCover({ ...before, src, seek: before.seek || seekTable(src) }, cover));
     continue;
   }
 
