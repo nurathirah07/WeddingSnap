@@ -7,6 +7,9 @@ const CONFIG = {
   TITLE:    "Walimatul Urus",
   COUPLE:   "Pengantin Lelaki & Pengantin Perempuan",
   DATE:     "dd . mm . yyyy",
+  // Size of that text on the photo, in % (100 = normal). Also set on the
+  // admin page under "Wedding details".
+  TEXT_SIZE: { title: 100, couple: 100, date: 100 },
 
   // Paste your Google Apps Script "Web app" URL here (see README.md).
   // Leave empty to run without uploads (save-to-phone still works).
@@ -56,36 +59,51 @@ function makeGrid({ width, cols, rows, slotW, slotH, margin, gap, footer }) {
 }
 
 const LAYOUTS = {
-  single: { name: "Single", hint: "1 photo",
-    ...makeGrid({ width: 1080, cols: 1, rows: 1, slotW: 960,  slotH: 1080, margin: 60, gap: 0,  footer: 300 }) },
-  strip2: { name: "2-Grid", hint: "2 photo strip",
-    ...makeGrid({ width: 600,  cols: 1, rows: 2, slotW: 520,  slotH: 650,  margin: 40, gap: 20, footer: 380 }) },
-  strip3: { name: "3-Cut", hint: "3 photo strip",
-    ...makeGrid({ width: 600,  cols: 1, rows: 3, slotW: 520,  slotH: 400,  margin: 40, gap: 20, footer: 340 }) },
-  strip4: { name: "4-Cut", hint: "classic strip",
-    ...makeGrid({ width: 600,  cols: 1, rows: 4, slotW: 520,  slotH: 380,  margin: 40, gap: 18, footer: 320 }) },
-  grid4:  { name: "4-Grid", hint: "2 × 2 grid",
-    ...makeGrid({ width: 1080, cols: 2, rows: 2, slotW: 480,  slotH: 600,  margin: 50, gap: 20, footer: 260 }) },
+  single:   { name: "Single", hint: "1 photo",
+    ...makeGrid({ width: 1080, cols: 1, rows: 1, slotW: 960, slotH: 1080, margin: 60, gap: 0,  footer: 300 }) },
+  polaroid: { name: "Polaroid", hint: "1 square photo",
+    ...makeGrid({ width: 1000, cols: 1, rows: 1, slotW: 880, slotH: 880,  margin: 60, gap: 0,  footer: 300 }) },
+  duo:      { name: "Duo", hint: "2 side by side",
+    ...makeGrid({ width: 1400, cols: 2, rows: 1, slotW: 630, slotH: 800,  margin: 50, gap: 40, footer: 280 }) },
+  strip2:   { name: "2-Grid", hint: "2 photo strip",
+    ...makeGrid({ width: 600,  cols: 1, rows: 2, slotW: 520, slotH: 650,  margin: 40, gap: 20, footer: 380 }) },
+  strip3:   { name: "3-Cut", hint: "3 photo strip",
+    ...makeGrid({ width: 600,  cols: 1, rows: 3, slotW: 520, slotH: 400,  margin: 40, gap: 20, footer: 340 }) },
+  strip4:   { name: "4-Cut", hint: "classic strip",
+    ...makeGrid({ width: 600,  cols: 1, rows: 4, slotW: 520, slotH: 380,  margin: 40, gap: 18, footer: 320 }) },
+  grid4:    { name: "4-Grid", hint: "2 × 2 grid",
+    ...makeGrid({ width: 1080, cols: 2, rows: 2, slotW: 480, slotH: 600,  margin: 50, gap: 20, footer: 260 }) },
+  // one big photo on top, two small ones under it
+  feature:  { name: "Big & Two", hint: "1 big + 2 small", width: 1080, height: 1560,
+    slots: [
+      { x: 60,  y: 60,  w: 960, h: 720 },
+      { x: 60,  y: 800, w: 470, h: 470 },
+      { x: 550, y: 800, w: 470, h: 470 },
+    ] },
+  grid6:    { name: "6-Grid", hint: "2 × 3 grid",
+    ...makeGrid({ width: 1080, cols: 2, rows: 3, slotW: 475, slotH: 475,  margin: 50, gap: 30, footer: 260 }) },
 };
 
 // ---------------------------------------------------------
-//  Frames: photobooth strip papers + wedding palettes
+//  Frame colours. Every print has the same design (photos + the
+//  wedding details underneath); guests pick its colour, an effect
+//  (js/effects.js) and a filter.
+//  bg = paper, text = title, sub = names + date
 // ---------------------------------------------------------
-const FRAMES = [
-  // Classic booth strips
-  { id: "booth",     name: "Classic Booth", type: "theme", bg: "#ffffff", text: "#1a1a1a", sub: "#707070" },
-  { id: "darkroom",  name: "Darkroom",      type: "theme", bg: "#0e0e0e", text: "#ffffff", sub: "#8c8c8c" },
-  { id: "35mm",      name: "35mm Film",     type: "theme", bg: "#111111", text: "#f2e6c9", sub: "#9a8f78", film: true },
-  { id: "kraft",     name: "Kraft Paper",   type: "theme", bg: "#c9a47c", text: "#3e2a1c", sub: "#5e4532" },
-  { id: "curtain",   name: "Red Curtain",   type: "theme", bg: "#b3261e", text: "#fff4e0", sub: "#ffd9c7", gradient: "#7f1a14" },
-
-  // Wedding palettes
-  { id: "emerald",   name: "Emerald & Gold", type: "theme", bg: "#0f4c3a", text: "#e6c77a", sub: "#cdb88a", gradient: "#0a3529" },
-  { id: "burgundy",  name: "Burgundy",       type: "theme", bg: "#7a1f2b", text: "#f3d9a4", sub: "#e8c6c0", gradient: "#55141d" },
-  { id: "champagne", name: "Champagne",      type: "theme", bg: "#efe2cc", text: "#7a5a35", sub: "#9c7f5c", gradient: "#e0caa6" },
-  { id: "rose",      name: "Dusty Rose",     type: "theme", bg: "#d8a7a7", text: "#fffaf6", sub: "#fbe6e3", gradient: "#c08588" },
+const COLOURS = [
+  { id: "white",     name: "White",      bg: "#ffffff", text: "#1f1a1c", sub: "#7a6f73" },
+  { id: "cream",     name: "Cream",      bg: "#f6efe4", text: "#5b4630", sub: "#8f7a62" },
+  { id: "blush",     name: "Blush",      bg: "#f7dde2", text: "#7a3b4a", sub: "#a2616f" },
+  { id: "rose",      name: "Dusty Rose", bg: "#d8a7ad", text: "#fffaf6", sub: "#fbe6e3" },
+  { id: "lilac",     name: "Lilac",      bg: "#ddd2f0", text: "#4b3a6e", sub: "#7a6a99" },
+  { id: "sky",       name: "Sky",        bg: "#d3e3f4", text: "#2f4a6b", sub: "#5f7896" },
+  { id: "sage",      name: "Sage",       bg: "#cfdac6", text: "#3f5139", sub: "#66785f" },
+  { id: "champagne", name: "Champagne",  bg: "#ecdcc0", text: "#7a5a35", sub: "#9c7f5c" },
+  { id: "burgundy",  name: "Burgundy",   bg: "#6e1d29", text: "#f3d9a4", sub: "#e8c6c0" },
+  { id: "emerald",   name: "Emerald",    bg: "#0f4c3a", text: "#e6c77a", sub: "#cdb88a" },
+  { id: "navy",      name: "Navy",       bg: "#1d2a44", text: "#f1e3c6", sub: "#b9c2d6" },
+  { id: "black",     name: "Black",      bg: "#121012", text: "#ffffff", sub: "#a39a9e" },
 ];
-
 // ---------------------------------------------------------
 //  Filters: film and booth looks (order of ops matters)
 // ---------------------------------------------------------

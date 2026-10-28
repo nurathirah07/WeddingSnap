@@ -3,13 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node tools/build-music.mjs && node tools/build-frames.mjs",
-    "music": "node tools/build-music.mjs",
-    "frames": "node tools/build-frames.mjs"
+    "build": "node tools/build-music.mjs",
+    "music": "node tools/build-music.mjs"
   },
   "dependencies": {
-    "mpg123-decoder": "^1.0.3",
-    "pngjs": "^7.0.0",
-    "sharp": "^0.34.5"
+    "mpg123-decoder": "^1.0.3"
   }
 }

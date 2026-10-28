@@ -6,10 +6,10 @@ No app download, no login. Total cost: RM0.
 
 ## Features
 
-- **Layouts:** Single, 2-Grid strip, 3-Cut strip, 4-Cut classic strip and 4-Grid (2 × 2)
+- **Layouts:** Single, Polaroid, Duo (side by side), 2-Grid, 3-Cut and 4-Cut strips, 4-Grid (2 × 2), Big & Two (1 big + 2 small) and 6-Grid (2 × 3)
 - **Booth mode:** auto-sequence with a 3 / 5 / 10 s countdown, flash, beeps and a shutter sound
 - **Filters:** live preview while shooting, and you can change them after shooting
-- **Frames:** themed frames (Noir, Ivory, Blush, Sage, Film), plus your own Canva frames (PNG, JPG, WebP, GIF, AVIF or SVG). Drop them in `frames/` and the photo windows are found automatically.
+- **One print design for every layout:** the photos with the wedding title, names and date underneath. Guests choose the paper **colour** (12), an **effect** (sparkles, hearts, stars, confetti, petals, bokeh, light leak) and a **filter**. Effects stay off faces and off the text.
 - **Retakes:** tap any photo on the edit screen to retake just that one
 - **Gallery picks:** choose a photo from the phone instead of the camera
 - **Uploads:** photos go automatically to Google Drive. With a bad signal they wait on the phone and send by themselves later (never twice).
@@ -25,70 +25,48 @@ No app download, no login. Total cost: RM0.
 
 ```
 index.html           page structure (all screens)
-admin.html           admin page: songs, frames, wedding details (js/admin.js),
+admin.html           admin page: songs, wedding details + text sizes (js/admin.js),
                      photos & wishes, QR table card (js/admin-album.js)
 slideshow.html       live slideshow for a TV / projector (js/slideshow.js)
 css/style.css        design
-js/config.js         ⭐ SETTINGS: names, date, frames, filters, layouts
+js/config.js         ⭐ SETTINGS: names, date, layouts, colours, filters
 js/app.js            booth logic, canvas drawing, upload, gallery
 js/filters.js        filter maths (works on iPhone too)
 js/audio.js          music + sound effects
-js/frame-detect.js   finds photo windows in a frame (used by admin + build)
-frames/              drop Canva frames here: PNG, JPG, WebP, GIF, AVIF, SVG
-                     (frames.json is made automatically)
+js/effects.js        effects on the print (sparkles, hearts…)
 music/               drop mp3s here (songs.json is made automatically)
-tools/               build-music.mjs (finds choruses), build-frames.mjs
+tools/               build-music.mjs (finds choruses)
                      (finds photo windows), preview-music.html
 apps-script/Code.gs  Google Drive backend
-.github/workflows/   auto scan songs + frames, publish to GitHub Pages
+.github/workflows/   auto scan songs, publish to GitHub Pages
 ```
 
 ## 1. Personalise
 
 Edit `js/config.js` and set `TITLE`, `COUPLE` and `DATE`.
 
-## Admin page (add songs and frames without code)
+## Admin page (songs and wedding details without code)
 
 Open `https://<username>.github.io/<repo>/admin.html`. It isn't linked from the app, and it can't do anything without a token.
 
 1. **Connect:** paste a GitHub token. The page explains how to make one: a fine-grained token for this repo only, with **Contents: Read and write** and **Actions: Read-only**. Give it an expiry date after the wedding.
-2. **Wedding details:** edit the title, the couple's names and the date. A preview shows how the bottom of a photo will look. They appear on the welcome cover, the home page and the record sleeve, and are printed on every photo. They're saved in `settings.json`, which overrides the defaults in `js/config.js`.
+2. **Wedding details:** edit the title, the couple's names and the date. A preview shows how the bottom of a photo will look. They appear on the welcome cover, the home page and the record sleeve, and are printed on every photo. Three sliders set the **text size** on the photo for the title, names and date (60–150%). If the text gets too big for the space under the photos, it all shrinks together so nothing is cut off. Everything is saved in `settings.json`, which overrides the defaults in `js/config.js`.
 3. **Add songs:** add mp3s, listen to them and remove old ones. Each song shows its chorus times with ▶ buttons.
-4. **Add frames:** add PNG, JPG, WebP, GIF, AVIF or SVG images (iPhone HEIC works in Safari, and is turned into JPG). Pink boxes appear right away to show where the photos will go, along with the layout. If a frame has no photo area, it's flagged and skipped.
-5. **Publish:** all changes go to GitHub in one commit. The Action then finds the choruses and photo windows and republishes the app. The page shows progress until it says **Live ✓**, which takes about 1–2 minutes.
+4. **Publish:** all changes go to GitHub in one commit. The Action then finds the choruses and republishes the app. The page shows progress until it says **Live ✓**, which takes about 1–2 minutes.
 
 The token is saved only in that browser (untick "Remember" to forget it when the tab closes). Treat it like a password, and delete it on GitHub after the wedding.
 
-## 2. Add your Canva frames
+## 2. The print
 
-To add a frame, export it from Canva (PNG is best; JPG, WebP, GIF, AVIF and SVG work too), put it in `frames/` and push to GitHub. That's all.
+Every layout uses the same design: the photos on coloured paper, with the title, a thin line, the couple's names and the date underneath (fonts: Runiga, Runethia and Orange Avenue).
 
-A JPG can't have see-through parts, so in a JPG the photo areas must be a different colour from the rest of the frame (Canva's placeholder boxes are fine).
+On the edit screen, guests choose:
 
-On every push, `tools/build-frames.mjs` looks at each new frame image and finds its photo windows. A window is a big rectangle that's different from the frame's background:
+- **Colour:** 12 paper colours, from `COLOURS` in `js/config.js`. Each one sets the paper (`bg`), the title colour (`text`) and the names / date colour (`sub`). Add or change them there.
+- **Effect:** from `js/effects.js`. Shapes are placed on the paper and the edges of the photos, never over the middle of a photo (faces) or over the text. They're always in the same places for a layout, so the preview matches the saved photo.
+- **Filter:** from `FILTERS` in `js/config.js`.
 
-- **Transparent window:** the photo goes under the frame, so flowers that hang over the edge stay on top.
-- **Solid colour box or Canva placeholder picture:** the photo is drawn on top of it.
-
-The number of windows decides which layout the frame belongs to:
-
-| Windows | Layout |
-| --- | --- |
-| 1 | Single |
-| 2 | 2-Grid |
-| 3 | 3-Cut |
-| 4 in a column | 4-Cut |
-| 4 in a 2 × 2 grid | 4-Grid |
-| any other number | The frame gets its own layout card |
-
-The results are saved to `frames/frames.json`. To check new frames on your computer before pushing, run `npm run frames`. It prints how many windows it found in each frame.
-
-You can edit `frames.json` by hand, for example to change a frame's `name`. Your edits are kept unless you replace the image with a different file.
-
-Tips:
-
-- Make the background around the edge one plain colour, so the scanner can tell frame from window.
-- Big Canva exports are fine; they're scaled down to 2400 px automatically.
+To add a layout, add it to `LAYOUTS` in `js/config.js`: the print's `width`, `height` and the photo `slots` (x, y, w, h in pixels). `makeGrid()` works out rows and columns for you. Leave space under the photos for the text.
 
 ## Music
 
@@ -109,7 +87,7 @@ On every push, GitHub runs `tools/build-music.mjs`, which:
 
 To remove a song, delete the mp3 and push again.
 
-To try new songs on your computer before pushing, run `npm install` once, then `npm run music` (songs only) or `npm run build` (songs and frames). This updates `music/songs.json` on your computer.
+To try new songs on your computer before pushing, run `npm install` once, then `npm run music`. This updates `music/songs.json` on your computer.
 
 Other things you can do:
 

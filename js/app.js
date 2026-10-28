@@ -10,7 +10,8 @@ const $ = (id) => document.getElementById(id);
 // =========================================================
 const state = {
   layoutId: "strip4",
-  frameId:  "noir",
+  colourId: "white",   // frame colour (COLOURS in config.js)
+  effectId: "none",    // sparkles, hearts... (js/effects.js)
   filterId: "none",
   shots:    [],      // one raw (unfiltered) canvas per slot, null = empty
   current:  0,       // which slot we're filling
@@ -24,18 +25,11 @@ const state = {
 };
 
 const layout   = () => LAYOUTS[state.layoutId];
-const frame    = () => FRAMES.find((f) => f.id === state.frameId);
+const colour   = () => COLOURS.find((c) => c.id === state.colourId) || COLOURS[0];
 const filter   = () => FILTERS.find((f) => f.id === state.filterId);
 const findFilter = (id) => FILTERS.find((f) => f.id === id);
-
-// PNG frames bring their own size + photo windows; themes use the layout's
-function geometry(fr = frame()) {
-  return fr.type === "png" ? fr : layout();
-}
-
-function framesForLayout() {
-  return FRAMES.filter((f) => f.type === "theme" || f.layout === state.layoutId);
-}
+// The photo window being filled now (shapes can differ, e.g. "Big & Two")
+const slotNow  = () => layout().slots[Math.min(state.current, layout().slots.length - 1)];
 
 // =========================================================
 //  Small helpers
@@ -233,22 +227,6 @@ window.addEventListener("popstate", () => {
   if (current !== "home" && !(history.state && history.state.app)) history.pushState({ app: true }, "");
 });
 
-// =========================================================
-//  PNG frames come from frames/frames.json (made by tools/build-frames.mjs).
-//  A frame with an unusual number of photos gets its own layout.
-// =========================================================
-const framesReady = fetch("frames/frames.json", { cache: "no-cache" })
-  .then((res) => res.json())
-  .then((data) => data.frames.forEach((fr) => {
-    FRAMES.push({ ...fr, type: "png" });
-    if (!LAYOUTS[fr.layout]) {
-      const n = fr.slots.length;
-      LAYOUTS[fr.layout] = { name: fr.name, hint: n + (n === 1 ? " photo" : " photos"),
-                             width: fr.width, height: fr.height, slots: fr.slots };
-    }
-  }))
-  .catch(() => console.warn("No frames/frames.json - only built-in frames"));
-
 // Wedding details saved from the admin page (settings.json) replace the
 // defaults in config.js - on the home page and on every photo.
 // Opened straight from the folder (file://), browsers won't let the page
@@ -265,27 +243,27 @@ function loadScript(src) {
 const settingsReady = (location.protocol === "file:"
     ? loadScript("settings.js").then(() => window.SETTINGS_DATA || {})
     : fetch("settings.json", { cache: "no-cache" }).then((res) => (res.ok ? res.json() : {})))
-  .then((s) => ["TITLE", "COUPLE", "DATE"].forEach((key) => {
-    const value = s[key.toLowerCase()];
-    if (typeof value === "string" && value.trim()) CONFIG[key] = value.trim();
-  }))
+  .then((s) => {
+    ["TITLE", "COUPLE", "DATE"].forEach((key) => {
+      const value = s[key.toLowerCase()];
+      if (typeof value === "string" && value.trim()) CONFIG[key] = value.trim();
+    });
+    // text sizes on the photo, in % (admin → Wedding details)
+    ["title", "couple", "date"].forEach((key) => {
+      const size = Number(s[key + "Size"]);
+      if (size >= 50 && size <= 200) CONFIG.TEXT_SIZE[key] = size;
+    });
+  })
   .catch(() => console.warn("No settings.json - using config.js"))
   .then(showDetails);
 
-// Fonts, details + frame images must be loaded before drawing on canvas
-const frameImages = {};
+// Fonts + details must be loaded before drawing on canvas
 const ready = Promise.all([
   settingsReady,
   document.fonts.load('80px "Runiga"'),
   document.fonts.load('40px "Runethia"'),
   document.fonts.load('30px "Orange Avenue"'),
   document.fonts.load('500 30px "DM Sans"'),
-  framesReady.then(() => Promise.all(FRAMES.filter((f) => f.type === "png").map((f) => new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => { frameImages[f.id] = img; resolve(); };
-    img.onerror = () => { console.warn("Frame not found:", f.src); resolve(); };
-    img.src = encodeURI(f.src);
-  })))),
 ]).catch(() => {});
 
 // =========================================================
@@ -493,7 +471,6 @@ function buildLayoutCards() {
       box.style.top    = (s.y / l.height * 100) + "%";
       box.style.width  = (s.w / l.width  * 100) + "%";
       box.style.height = (s.h / l.height * 100) + "%";
-      if (s.angle) box.style.transform = `rotate(${s.angle}deg)`;
       mini.appendChild(box);
     });
 
@@ -506,9 +483,6 @@ function buildLayoutCards() {
 
 function chooseLayout(id) {
   state.layoutId = id;
-  if (!framesForLayout().some((f) => f.id === state.frameId)) {
-    state.frameId = framesForLayout()[0].id;
-  }
   resetShots();
   show("booth");
 }
@@ -527,10 +501,7 @@ const viewfinder = $("viewfinder");
 let wakeLock = null;
 
 async function startCamera() {
-  // Live preview has the same shape as the photo slots
-  const s = layout().slots[0];
-  viewfinder.style.aspectRatio = s.w + " / " + s.h;
-  viewfinder.style.setProperty("--ar", s.w / s.h);
+  fitViewfinder();
   video.style.filter = filterToCss(filter());
   buildLiveFilters();
   renderBooth();
@@ -603,7 +574,15 @@ function stopCamera() {
 }
 
 // Header text + the little dots that show which shots are done
+// Live preview has the same shape as the photo window being filled
+function fitViewfinder() {
+  const s = slotNow();
+  viewfinder.style.aspectRatio = s.w + " / " + s.h;
+  viewfinder.style.setProperty("--ar", s.w / s.h);
+}
+
 function renderBooth() {
+  fitViewfinder();
   const total = state.shots.length;
   $("boothTitle").textContent = state.retakeOne
     ? "Retake photo " + (state.current + 1)
@@ -657,7 +636,7 @@ function buildLiveFilters() {
 // Grab the current camera frame, cropped to the slot shape.
 // Stored WITHOUT filter so the guest can still change it later.
 function capture() {
-  const s = layout().slots[0];
+  const s = slotNow();
   const long = 1400;   // enough detail for printing, small enough to upload
   const w = s.w >= s.h ? long : Math.round(long * s.w / s.h);
   const h = s.w >= s.h ? Math.round(long * s.h / s.w) : long;
@@ -742,7 +721,7 @@ $("pickFile").addEventListener("change", (e) => {
   if (!file) return;
   const img = new Image();
   img.onload = () => {
-    const s = layout().slots[0];
+    const s = slotNow();
     const shot = document.createElement("canvas");
     shot.width = 1400;
     shot.height = Math.round(1400 * s.h / s.w);
@@ -810,40 +789,25 @@ function filtered(shot, f) {
 }
 
 // Draw the full photo (frame + photos + text) onto `canvas`
-function compose(canvas, fr = frame(), f = filter()) {
-  const g = geometry(fr);
+// The print: paper colour → photos → effect → wedding details.
+// Every print has this same design; guests choose colour, effect, filter.
+function compose(canvas, f = filter()) {
+  const g = layout();
+  const c = colour();
   canvas.width = g.width;
   canvas.height = g.height;
   const ctx = canvas.getContext("2d");
-
-  if (fr.type === "png") {
-    const img = frameImages[fr.id];
-    if (img && !fr.overlay) ctx.drawImage(img, 0, 0, g.width, g.height);
-    drawPhotos(ctx, g, f);
-    if (img && fr.overlay) ctx.drawImage(img, 0, 0, g.width, g.height);
-    return;
-  }
-
-  drawThemeBackground(ctx, g, fr);
+  ctx.fillStyle = c.bg;
+  ctx.fillRect(0, 0, g.width, g.height);
   drawPhotos(ctx, g, f);
-  drawFooter(ctx, g, fr);
-}
-
-// Tilted windows (Polaroids on a collage...): turn the canvas around the
-// window's centre, then draw as if it were straight
-function tilt(ctx, slot) {
-  if (!slot.angle) return;
-  const cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2;
-  ctx.translate(cx, cy);
-  ctx.rotate((slot.angle * Math.PI) / 180);
-  ctx.translate(-cx, -cy);
+  Effects.apply(ctx, g, state.effectId, c, state.layoutId);
+  drawFooter(ctx, g, c);
 }
 
 function drawPhotos(ctx, g, f) {
   g.slots.forEach((slot, i) => {
     const shot = state.shots[i];
     ctx.save();
-    tilt(ctx, slot);
     roundRect(ctx, slot.x, slot.y, slot.w, slot.h, slot.r || 0);
     ctx.clip();
     if (shot) {
@@ -856,84 +820,116 @@ function drawPhotos(ctx, g, f) {
   });
 }
 
-function drawThemeBackground(ctx, g, fr) {
-  if (fr.gradient) {
-    const grad = ctx.createLinearGradient(0, 0, 0, g.height);
-    grad.addColorStop(0, fr.bg);
-    grad.addColorStop(1, fr.gradient);
-    ctx.fillStyle = grad;
-  } else {
-    ctx.fillStyle = fr.bg;
-  }
-  ctx.fillRect(0, 0, g.width, g.height);
-
-  // Film: sprocket holes down both edges
-  if (fr.film) {
-    const m = g.slots[0].x;
-    const hw = m * 0.38, hh = m * 0.55, gap = hh * 0.9;
-    ctx.fillStyle = "rgba(255,255,255,0.85)";
-    for (let y = gap / 2; y < g.height - hh; y += hh + gap) {
-      roundRect(ctx, (m - hw) / 2, y, hw, hh, hw * 0.25); ctx.fill();
-      roundRect(ctx, g.width - m + (m - hw) / 2, y, hw, hh, hw * 0.25); ctx.fill();
-    }
-  }
-}
-
-function drawFooter(ctx, g, fr) {
+// Title, a thin line, the couple's names and the date, centred in the
+// space under the photos. Sizes come from admin (CONFIG.TEXT_SIZE); if
+// they're too big for the space, everything shrinks together.
+function drawFooter(ctx, g, c) {
   const bottom = Math.max(...g.slots.map((s) => s.y + s.h));
   const space = g.height - bottom;
   const cx = g.width / 2;
   const maxW = g.width * 0.84;
-  const big = g.width * 0.085;
+  const unit = Math.min(g.width * 0.105, space * 0.34);
+  const pct = (key) => (CONFIG.TEXT_SIZE[key] || 100) / 100;
 
+  let title = unit * 0.86 * pct("title");
+  let couple = unit * 0.5 * pct("couple");
+  let date = unit * 0.3 * pct("date");
+  let gap = unit * 0.2;
+  const total = () => title * 1.15 + gap * 2 + couple * 1.3 + date * 1.45;
+  const fit = Math.min(1, (space * 0.86) / total());
+  title *= fit; couple *= fit; date *= fit; gap *= fit;
+
+  let y = bottom + (space - total()) / 2;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  ctx.fillStyle = fr.text;
-  fitText(ctx, CONFIG.TITLE, cx, bottom + space * 0.36, maxW, Math.round(big * 0.86),
-          '400 {size} "Runiga", Georgia, serif');
+  ctx.fillStyle = c.text;
+  fitText(ctx, CONFIG.TITLE, cx, y + title * 0.6, maxW, Math.round(title), '400 {size} "Runiga", Georgia, serif');
+  y += title * 1.15 + gap;
 
   // thin divider line
-  ctx.strokeStyle = fr.sub;
+  ctx.strokeStyle = c.sub;
   ctx.globalAlpha = 0.6;
   ctx.lineWidth = Math.max(1, g.width / 540);
   ctx.beginPath();
-  ctx.moveTo(cx - g.width * 0.06, bottom + space * 0.54);
-  ctx.lineTo(cx + g.width * 0.06, bottom + space * 0.54);
+  ctx.moveTo(cx - g.width * 0.06, y);
+  ctx.lineTo(cx + g.width * 0.06, y);
   ctx.stroke();
   ctx.globalAlpha = 1;
+  y += gap;
 
-  ctx.fillStyle = fr.sub;
-  fitText(ctx, CONFIG.COUPLE, cx, bottom + space * 0.68, maxW, Math.round(big * 0.5),
-          '400 {size} "Runethia", Georgia, serif');
-  fitText(ctx, CONFIG.DATE, cx, bottom + space * 0.84, maxW, Math.round(big * 0.3),
-          '400 {size} "Orange Avenue", Georgia, serif');
+  ctx.fillStyle = c.sub;
+  fitText(ctx, CONFIG.COUPLE, cx, y + couple * 0.65, maxW, Math.round(couple), '400 {size} "Runethia", Georgia, serif');
+  y += couple * 1.3;
+  fitText(ctx, CONFIG.DATE, cx, y + date * 0.72, maxW, Math.round(date), '400 {size} "Orange Avenue", Georgia, serif');
 }
 
 async function goToEdit() {
   state.retakeOne = false;
   state.current = 0;
   await ready;
-  buildFrameChips();
+  buildColourChips();
+  buildEffectChips();
   buildFilterChips();
   compose(preview);
   show("edit");
 }
 
-function buildFrameChips() {
-  const wrap = $("frameChips");
+// Colour, Effects and Filter each have a tab, so the screen stays tidy
+document.querySelectorAll(".editTab").forEach((tab) => tab.addEventListener("click", () => {
+  document.querySelectorAll(".editTab").forEach((t) => {
+    t.classList.toggle("active", t === tab);
+    t.setAttribute("aria-selected", t === tab);
+  });
+  document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== tab.dataset.pane));
+}));
+
+function selectChip(wrap, chip) {
+  wrap.querySelectorAll(".swatch").forEach((c) => c.classList.toggle("selected", c === chip));
+}
+
+function buildColourChips() {
+  const wrap = $("colourChips");
   wrap.innerHTML = "";
-  framesForLayout().forEach((fr) => {
+  COLOURS.forEach((c) => {
     const chip = document.createElement("button");
-    chip.className = "swatch" + (fr.id === state.frameId ? " selected" : "");
-    const sw = document.createElement("span");
-    if (fr.type === "png") sw.style.backgroundImage = `url("${encodeURI(fr.src)}")`;
-    else sw.style.background = fr.gradient ? `linear-gradient(${fr.bg}, ${fr.gradient})` : fr.bg;
-    chip.appendChild(sw);
-    chip.insertAdjacentHTML("beforeend", `<small>${fr.name}</small>`);
+    chip.className = "swatch colour" + (c.id === state.colourId ? " selected" : "");
+    chip.setAttribute("aria-label", c.name);
+    const dot = document.createElement("span");
+    dot.style.background = c.bg;
+    chip.appendChild(dot);
+    chip.insertAdjacentHTML("beforeend", `<small>${c.name}</small>`);
     chip.addEventListener("click", () => {
-      state.frameId = fr.id;
-      wrap.querySelectorAll(".swatch").forEach((c) => c.classList.toggle("selected", c === chip));
+      state.colourId = c.id;
+      selectChip(wrap, chip);
+      buildEffectChips();   // effect previews use the paper colour
+      compose(preview);
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+// Effect chips: a little card in the chosen colour with the effect on it
+function buildEffectChips() {
+  const wrap = $("effectChips");
+  wrap.innerHTML = "";
+  const c = colour();
+  EFFECTS.forEach((ef) => {
+    const chip = document.createElement("button");
+    chip.className = "swatch" + (ef.id === state.effectId ? " selected" : "");
+    const thumb = document.createElement("canvas");
+    thumb.width = thumb.height = 120;
+    const ctx = thumb.getContext("2d");
+    ctx.fillStyle = c.bg;
+    ctx.fillRect(0, 0, 120, 120);
+    const g = { width: 120, height: 120, slots: [{ x: 22, y: 18, w: 76, h: 64 }] };
+    if (state.shots[0]) drawCover(ctx, state.shots[0], 22, 18, 76, 64);
+    Effects.apply(ctx, g, ef.id, c, "thumb", 13);
+    chip.appendChild(thumb);
+    chip.insertAdjacentHTML("beforeend", `<small>${ef.name}</small>`);
+    chip.addEventListener("click", () => {
+      state.effectId = ef.id;
+      selectChip(wrap, chip);
       compose(preview);
     });
     wrap.appendChild(chip);
@@ -956,7 +952,7 @@ function buildFilterChips() {
     chip.insertAdjacentHTML("beforeend", `<small>${f.name}</small>`);
     chip.addEventListener("click", () => {
       state.filterId = f.id;
-      wrap.querySelectorAll(".swatch").forEach((c) => c.classList.toggle("selected", c === chip));
+      selectChip(wrap, chip);
       compose(preview);
     });
     wrap.appendChild(chip);
@@ -968,13 +964,7 @@ preview.addEventListener("click", (e) => {
   const rect = preview.getBoundingClientRect();
   const x = (e.clientX - rect.left) * preview.width / rect.width;
   const y = (e.clientY - rect.top) * preview.height / rect.height;
-  const i = geometry().slots.findIndex((s) => {
-    // tilted window: turn the tap back the other way around its centre
-    const a = (-(s.angle || 0) * Math.PI) / 180, cx = s.x + s.w / 2, cy = s.y + s.h / 2;
-    const tx = cx + (x - cx) * Math.cos(a) - (y - cy) * Math.sin(a);
-    const ty = cy + (x - cx) * Math.sin(a) + (y - cy) * Math.cos(a);
-    return tx >= s.x && tx <= s.x + s.w && ty >= s.y && ty <= s.y + s.h;
-  });
+  const i = layout().slots.findIndex((s) => x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h);
   if (i === -1) return;
   state.current = i;
   state.retakeOne = true;
@@ -1507,6 +1497,5 @@ $("lbDelete").addEventListener("click", async () => {
 //  Start
 // =========================================================
 buildLayoutCards();
-framesReady.then(buildLayoutCards);   // again, now including frame-only layouts
 resetShots();
 Sender.flush();   // photos left waiting from last time (bad signal) go now

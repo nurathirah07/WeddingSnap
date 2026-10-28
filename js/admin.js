@@ -1,10 +1,9 @@
 // =========================================================
-//  Admin page: add / remove songs and frames.
+//  Admin page: add / remove songs, edit the wedding details.
 //  Files are committed to the GitHub repo through the GitHub API.
 //  The GitHub Action (.github/workflows/deploy.yml) then finds the
 //  chorus + photo windows and republishes the site.
 // =========================================================
-import { findWindows, pickLayout, frameId, FRAME_FILE } from "./frame-detect.js?v=dev";
 
 const $ = (id) => document.getElementById(id);
 const TOKEN_KEY = "weddingsnap.admin.token";
@@ -14,10 +13,11 @@ let repo = "", token = "", branch = "main";
 let songs = [];    // { name, path, size, info, status: "live" | "new" | "delete", file, cut }
                    // cut = Set of chorus times (seconds) marked for removal
 let liveSongList = { seekStep: 2, songs: [] };   // music/songs.json as the live site has it
-let frames = [];   // { name, path, size, info, status, file, preview }
 // Wedding details: what's saved in settings.json, and what's in the boxes now
 let liveDetails = { title: "", couple: "", date: "" };
 const DETAIL_INPUTS = { title: "setTitle", couple: "setCouple", date: "setDate" };
+// Text size on the photo, in % (sliders)
+const SIZE_INPUTS = { titleSize: "sizeTitle", coupleSize: "sizeCouple", dateSize: "sizeDate" };
 const player = new Audio();
 
 // =========================================================
@@ -95,7 +95,6 @@ async function liveData(path) {
     return {};
   }
 }
-const liveJson = async (path, key) => (await liveData(path))[key] || [];
 
 // =========================================================
 //  Connect
@@ -165,23 +164,18 @@ $("disconnectBtn").addEventListener("click", () => {
 //  Load what's in the repo
 // =========================================================
 async function loadLibrary() {
-  const [songFiles, frameFiles, songInfo, frameInfo] = await Promise.all([
-    listFolder("music"), listFolder("frames"),
+  const [songFiles, songInfo] = await Promise.all([
+    listFolder("music"),
     liveData("music/songs.json").then((data) => {
       liveSongList = { seekStep: data.seekStep || 2, songs: data.songs || [] };
       return liveSongList.songs;
     }),
-    liveJson("frames/frames.json", "frames"),
     loadDetails(),
   ]);
 
   songs = songFiles.filter((f) => /\.mp3$/i.test(f.name)).map((f) => ({
     name: f.name, path: f.path, size: f.size, status: "live",
     info: songInfo.find((s) => s.src === f.path),
-  }));
-  frames = frameFiles.filter((f) => FRAME_FILE.test(f.name)).map((f) => ({
-    name: f.name, path: f.path, size: f.size, status: "live", rawUrl: f.download_url,
-    info: frameInfo.find((s) => s.src === f.path),
   }));
   render();
 }
@@ -202,14 +196,19 @@ async function loadDetails() {
     title: saved.title || CONFIG.TITLE,
     couple: saved.couple || CONFIG.COUPLE,
     date: saved.date || CONFIG.DATE,
+    titleSize: Number(saved.titleSize) || CONFIG.TEXT_SIZE.title,
+    coupleSize: Number(saved.coupleSize) || CONFIG.TEXT_SIZE.couple,
+    dateSize: Number(saved.dateSize) || CONFIG.TEXT_SIZE.date,
   };
   Object.entries(DETAIL_INPUTS).forEach(([key, id]) => { $(id).value = liveDetails[key]; });
+  Object.entries(SIZE_INPUTS).forEach(([key, id]) => { $(id).value = liveDetails[key]; });
   renderDetails();
 }
 
 function currentDetails() {
   const d = {};
   Object.entries(DETAIL_INPUTS).forEach(([key, id]) => { d[key] = $(id).value.trim(); });
+  Object.entries(SIZE_INPUTS).forEach(([key, id]) => { d[key] = Number($(id).value); });
   return d;
 }
 
@@ -228,10 +227,20 @@ function renderDetails() {
   $("pvTitle").textContent = d.title;
   $("pvCouple").textContent = d.couple;
   $("pvDate").textContent = d.date;
+  // the preview's text grows / shrinks with the sliders - and, like on
+  // the real photo, a line that's too long gets smaller to fit
+  const fitLine = (el, px) => {
+    el.style.fontSize = px + "px";
+    while (el.scrollWidth > el.clientWidth && px > 5) el.style.fontSize = (px -= 0.5) + "px";
+  };
+  fitLine($("pvTitle"), 20 * d.titleSize / 100);
+  fitLine($("pvCouple"), 15 * d.coupleSize / 100);
+  fitLine($("pvDate"), 9 * d.dateSize / 100);
+  Object.entries(SIZE_INPUTS).forEach(([key, id]) => { $(id + "Out").textContent = d[key] + "%"; });
   $("detailsError").textContent = detailsProblem();
 }
 
-Object.values(DETAIL_INPUTS).forEach((id) => $(id).addEventListener("input", () => {
+[...Object.values(DETAIL_INPUTS), ...Object.values(SIZE_INPUTS)].forEach((id) => $(id).addEventListener("input", () => {
   renderDetails();
   renderBar();
 }));
@@ -254,72 +263,7 @@ function addSongs(fileList) {
   render();
 }
 
-async function addFrames(fileList) {
-  for (let file of fileList) {
-    // iPhone photos (HEIC): turn into a JPG, if this browser can read them (Safari)
-    if (/\.(heic|heif)$/i.test(file.name)) {
-      file = await heicToJpeg(file);
-      if (!file) { toast("This browser can't open HEIC. Export the frame as JPG or PNG."); continue; }
-    }
-    if (!FRAME_FILE.test(file.name)) { toast(file.name + ": use PNG, JPG, WebP, GIF, AVIF or SVG"); continue; }
-    if (file.size > 15 * 1024 * 1024) { toast(file.name + " is too big (max 15 MB)"); continue; }
-    const name = safeName(file.name);
-    const path = "frames/" + name;
-    let preview;
-    try {
-      preview = await analyseFrame(file);
-    } catch (err) {
-      toast("Can't open " + file.name + ". Export it again as PNG or JPG.");
-      continue;
-    }
-    frames = frames.filter((f) => f.path !== path || f.status !== "new" || f.replacing);   // re-added: replace the staged copy
-    const existing = frames.find((f) => f.path === path);
-    if (existing) Object.assign(existing, { status: "new", file, preview, replacing: true });
-    else frames.push({ name, path, size: file.size, status: "new", file, preview });
-  }
-  render();
-}
-
-async function heicToJpeg(file) {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const c = document.createElement("canvas");
-    c.width = bitmap.width;
-    c.height = bitmap.height;
-    c.getContext("2d").drawImage(bitmap, 0, 0);
-    const blob = await new Promise((resolve) => c.toBlob(resolve, "image/jpeg", 0.92));
-    return blob && new File([blob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg" });
-  } catch (err) {
-    return null;
-  }
-}
-
-// Same detection GitHub will run, so the admin sees the result right away
-async function analyseFrame(file) {
-  const url = URL.createObjectURL(file);
-  const img = await new Promise((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = reject;
-    i.src = url;
-  });
-  // An SVG without a set size reports 0 × 0: give it one
-  const w = img.naturalWidth || 1200, h = img.naturalHeight || 1800;
-  const scale = Math.min(1, 1600 / Math.max(w, h));
-  const c = document.createElement("canvas");
-  c.width = Math.round(w * scale);
-  c.height = Math.round(h * scale);
-  const ctx = c.getContext("2d");
-  ctx.drawImage(img, 0, 0, c.width, c.height);
-  const { slots, transparent } = findWindows(ctx.getImageData(0, 0, c.width, c.height));
-  return {
-    url, width: c.width, height: c.height, slots, overlay: transparent,
-    layout: slots.length ? pickLayout(slots, frameId(file.name)) : null,
-  };
-}
-
 $("addSongs").addEventListener("change", (e) => { addSongs(e.target.files); e.target.value = ""; });
-$("addFrames").addEventListener("change", (e) => { addFrames(e.target.files); e.target.value = ""; });
 
 document.querySelectorAll(".dropZone").forEach((zone) => {
   zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("over"); });
@@ -327,8 +271,7 @@ document.querySelectorAll(".dropZone").forEach((zone) => {
   zone.addEventListener("drop", (e) => {
     e.preventDefault();
     zone.classList.remove("over");
-    if (zone.dataset.kind === "song") addSongs(e.dataTransfer.files);
-    else addFrames(e.dataTransfer.files);
+    addSongs(e.dataTransfer.files);
   });
 });
 
@@ -337,7 +280,6 @@ document.querySelectorAll(".dropZone").forEach((zone) => {
 // =========================================================
 function render() {
   renderSongs();
-  renderFrames();
   renderBar();
 }
 
@@ -431,104 +373,30 @@ function renderSongs() {
   });
 }
 
-function renderFrames() {
-  const grid = $("frameGrid");
-  grid.innerHTML = "";
-  if (!frames.length) grid.innerHTML = '<p class="empty">No frames yet - the built-in themes are used.</p>';
-
-  frames.forEach((frame) => {
-    const geo = frame.preview || frame.info;   // detected windows to draw
-    const card = document.createElement("div");
-    card.className = "frameCard " + frame.status + (frame.preview && !frame.preview.slots.length ? " bad" : "");
-
-    const canvas = document.createElement("canvas");
-    card.appendChild(canvas);
-    drawFrameThumb(canvas, frame, geo);
-
-    const layoutName = !geo ? "" : !geo.slots.length ? "⚠ No photo area found"
-      : (LAYOUTS[geo.layout] ? LAYOUTS[geo.layout].name : "Own layout") + " · " + geo.slots.length +
-        (geo.slots.length === 1 ? " photo" : " photos");
-    const info = document.createElement("div");
-    info.className = "frameInfo";
-    info.innerHTML = `<b>${frame.name.replace(FRAME_FILE, "")}</b> ${statusBadge(frame)}<small>${layoutName}</small>`;
-    if (frame.preview && !frame.preview.slots.length) {
-      info.innerHTML += `<small class="error">Make the photo area transparent or one plain colour, then add it again.</small>`;
-    }
-    card.appendChild(info);
-
-    const del = document.createElement("button");
-    del.className = "mini danger";
-    del.textContent = frame.status === "delete" ? "Undo" : "Remove";
-    del.onclick = () => toggleRemove(frames, frame);
-    card.appendChild(del);
-    grid.appendChild(card);
-  });
-}
-
-function drawFrameThumb(canvas, frame, geo) {
-  const img = new Image();
-  img.onload = () => {
-    const W = geo ? geo.width : img.naturalWidth, H = geo ? geo.height : img.naturalHeight;
-    const scale = 260 / H;
-    canvas.width = Math.round(W * scale);
-    canvas.height = 260;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    if (!geo) return;
-    geo.slots.forEach((s, i) => {
-      ctx.save();
-      if (s.angle) {   // tilted window: turn around its centre
-        const cx = (s.x + s.w / 2) * scale, cy = (s.y + s.h / 2) * scale;
-        ctx.translate(cx, cy);
-        ctx.rotate((s.angle * Math.PI) / 180);
-        ctx.translate(-cx, -cy);
-      }
-      ctx.fillStyle = "rgba(201,123,132,0.55)";
-      ctx.strokeStyle = "#a85f69";
-      ctx.lineWidth = 2;
-      ctx.fillRect(s.x * scale, s.y * scale, s.w * scale, s.h * scale);
-      ctx.strokeRect(s.x * scale, s.y * scale, s.w * scale, s.h * scale);
-      ctx.fillStyle = "#fff";
-      ctx.font = "bold 16px DM Sans, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(i + 1, (s.x + s.w / 2) * scale, (s.y + s.h / 2) * scale);
-      ctx.restore();
-    });
-  };
-  // live site first; if it isn't deployed yet, GitHub's copy
-  img.onerror = () => { if (frame.rawUrl && img.src !== frame.rawUrl) img.src = frame.rawUrl; };
-  img.src = frame.preview ? frame.preview.url : encodeURI(frame.path);
-}
-
 // =========================================================
 //  Publish = one commit with every change
 // =========================================================
 function pendingChanges() {
-  const all = [...songs, ...frames];
   return {
     sections: songs.filter((s) => s.status === "live" && s.cut && s.cut.size),
     details: detailsChanged(),
-    adds: all.filter((x) => x.status === "new" && !(x.preview && !x.preview.slots.length)),
-    deletes: all.filter((x) => x.status === "delete"),
-    broken: frames.filter((f) => f.status === "new" && f.preview && !f.preview.slots.length),
+    adds: songs.filter((x) => x.status === "new"),
+    deletes: songs.filter((x) => x.status === "delete"),
   };
 }
 
 function renderBar() {
-  const { sections, details, adds, deletes, broken } = pendingChanges();
+  const { sections, details, adds, deletes } = pendingChanges();
   const cuts = sections.reduce((sum, s) => sum + s.cut.size, 0);
   const n = adds.length + deletes.length + (details ? 1 : 0) + cuts;
-  $("publishBar").classList.toggle("hidden", !n && !broken.length);
+  $("publishBar").classList.toggle("hidden", !n);
   const parts = [];
   if (details) parts.push("Wedding details changed");
   if (cuts) parts.push(cuts + (cuts === 1 ? " section" : " sections") + " to remove");
   if (adds.length) parts.push(adds.length + " to add");
   if (deletes.length) parts.push(deletes.length + " to remove");
   $("pendingCount").textContent = parts.join(" · ") || "Nothing to publish";
-  $("publishStatus").textContent = broken.length
-    ? broken.length + " frame(s) with no photo area will be skipped"
-    : "Not live yet - press Publish";
+  $("publishStatus").textContent = "Not live yet - press Publish";
   $("publishBtn").disabled = !n;
 }
 
@@ -612,8 +480,7 @@ $("publishBtn").addEventListener("click", async () => {
       s.cut = null;
     });
     songs = songs.filter((s) => s.status !== "delete");
-    frames = frames.filter((f) => f.status !== "delete");
-    [...songs, ...frames].forEach((x) => {
+    songs.forEach((x) => {
       if (x.status === "new") { x.status = "live"; x.info = null; x.replacing = false; }
     });
     render();

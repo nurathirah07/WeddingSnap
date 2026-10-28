@@ -26,8 +26,8 @@
   <section class="card" id="connectCard">
     <h2>Connect</h2>
     <p class="muted">
-      Songs and frames are saved to the GitHub repo that hosts this site.
-      GitHub then scans them (chorus + photo windows) and updates the app automatically.
+      Songs and wedding details are saved to the GitHub repo that hosts this site.
+      GitHub then finds each song's chorus and updates the app automatically.
     </p>
     <label class="field">
       <span>Repository</span>
@@ -80,6 +80,14 @@
             <span>Date</span>
             <input id="setDate" maxlength="40" placeholder="12 . 12 . 2026">
           </label>
+          <!-- Text size on the photo, in % (100 = normal) -->
+          <div class="sizes">
+            <span class="sizesLabel">Text size on the photo</span>
+            <label class="size"><span>Title</span><input type="range" id="sizeTitle" min="60" max="150" step="5" value="100"><output id="sizeTitleOut">100%</output></label>
+            <label class="size"><span>Names</span><input type="range" id="sizeCouple" min="60" max="150" step="5" value="100"><output id="sizeCoupleOut">100%</output></label>
+            <label class="size"><span>Date</span><input type="range" id="sizeDate" min="60" max="150" step="5" value="100"><output id="sizeDateOut">100%</output></label>
+            <small class="hint">If the text gets too big for the space, it all shrinks together so nothing is cut off.</small>
+          </div>
           <p class="error" id="detailsError"></p>
         </div>
         <!-- how the bottom of a photo will look -->
@@ -106,18 +114,6 @@
       <ul class="songList" id="songList"></ul>
     </section>
 
-    <section class="card">
-      <div class="cardHead">
-        <h2>Frames</h2>
-        <label class="btn primary small">
-          + Add frames
-          <input type="file" id="addFrames" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.avif,.svg,.heic,.heif" multiple hidden>
-        </label>
-      </div>
-      <p class="muted">PNG, JPG, WebP, GIF, AVIF or SVG (e.g. from Canva). Pink boxes show where the photos will go. In a JPG the photo areas must be one plain colour, since JPG can't be see-through.</p>
-      <div class="dropZone" data-kind="frame">Drop frame images here</div>
-      <div class="frameGrid" id="frameGrid"></div>
-    </section>
   </div>
 
   <!-- ============ Photos & wishes (works without GitHub) ============ -->

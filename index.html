@@ -151,11 +151,16 @@
     </div>
     <p class="tip">Tap a photo to retake it</p>
 
+    <!-- Every print has the same design: guests choose its colour, an effect and a filter -->
     <div class="panel">
-      <h3>Frame</h3>
-      <div class="chips" id="frameChips"></div>
-      <h3>Filter</h3>
-      <div class="chips" id="filterChips"></div>
+      <div class="editTabs" role="tablist">
+        <button class="editTab active" role="tab" aria-selected="true" data-pane="colour">Colour</button>
+        <button class="editTab" role="tab" aria-selected="false" data-pane="effect">Effects</button>
+        <button class="editTab" role="tab" aria-selected="false" data-pane="filter">Filter</button>
+      </div>
+      <div class="chips pane" id="colourChips" data-pane="colour"></div>
+      <div class="chips pane hidden" id="effectChips" data-pane="effect"></div>
+      <div class="chips pane hidden" id="filterChips" data-pane="filter"></div>
     </div>
 
     <div class="bottomBar">
@@ -259,6 +264,7 @@
 
   <script src="js/config.js?v=dev"></script>
   <script src="js/filters.js?v=dev"></script>
+  <script src="js/effects.js?v=dev"></script>
   <script src="js/audio.js?v=dev"></script>
   <script src="js/app.js?v=dev"></script>
 </body>
