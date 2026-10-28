@@ -278,9 +278,22 @@ function showDetails() {
   $("homeCouple").textContent = $("introCouple").textContent = CONFIG.COUPLE;
   $("sleeveDate").textContent = $("introDate").textContent   = CONFIG.DATE;
 
-  // Monogram on the record: first letter of each name, e.g. "Aisyah & Hakim" -> "A&H"
-  const monogram = CONFIG.COUPLE.split("&").map((n) => n.trim().charAt(0).toUpperCase()).join("&");
-  document.querySelectorAll(".cdMono").forEach((el) => { el.textContent = monogram; });
+  // Monogram on the cover and the record: first letter of each name,
+  // e.g. "Aisyah & Hakim", "Aisyah and Hakim", "Aisyah dan Hakim" -> A & H
+  const initials = CONFIG.COUPLE.split(/\s*&\s*|\s+(?:and|dan)\s+/i)
+    .map((n) => n.trim().charAt(0).toUpperCase()).filter(Boolean);
+  document.querySelectorAll(".cdMono").forEach((el) => {
+    const parts = [];
+    initials.forEach((letter, i) => {
+      if (i) {
+        const amp = document.createElement("i");   // smaller "&" between the letters
+        amp.textContent = "&";
+        parts.push(amp);
+      }
+      parts.push(letter);
+    });
+    el.replaceChildren(...parts);
+  });
   document.body.classList.add("detailsReady");   // fade the text in (no flash of old names)
 }
 
