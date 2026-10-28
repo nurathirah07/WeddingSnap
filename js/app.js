@@ -44,6 +44,9 @@ function toast(msg) {
   toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 
+// A tiny buzz when something is picked (Android; iPhones ignore it)
+const tick = () => { try { navigator.vibrate && navigator.vibrate(8); } catch (e) {} };
+
 function randomToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -201,6 +204,24 @@ $("askNo").addEventListener("click", () => askDone && askDone(false));
 $("ask").addEventListener("click", (e) => { if (e.target === $("ask") && askDone) askDone(false); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && askDone) askDone(false); });
 
+// Step bar under the title: Layout → Pose → Style → Share
+const FLOW = [["layout", "Layout"], ["booth", "Pose"], ["edit", "Style"], ["result", "Share"]];
+FLOW.forEach(([id], n) => {
+  const ol = document.createElement("ol");
+  ol.className = "flow";
+  ol.setAttribute("aria-label", `Step ${n + 1} of ${FLOW.length}`);
+  FLOW.forEach(([, name], i) => {
+    const li = document.createElement("li");
+    li.textContent = name;
+    if (i < n) li.className = "done";
+    if (i === n) { li.className = "now"; li.setAttribute("aria-current", "step"); }
+    ol.appendChild(li);
+  });
+  const screen = $(id);
+  const bar = screen.querySelector(".topbar");
+  if (bar) bar.after(ol); else screen.prepend(ol);
+});
+
 document.querySelectorAll("[data-go]").forEach((btn) =>
   btn.addEventListener("click", () => show(btn.dataset.go)));
 
@@ -221,7 +242,7 @@ window.addEventListener("popstate", () => {
     return;
   }
   const lb = $("lightbox");
-  if (!lb.classList.contains("hidden")) { lb.classList.add("hidden"); return; }
+  if (!lb.classList.contains("hidden")) { hideLightbox(); return; }
   goBack();
   // ready for the next Back (show() may already have added the entry)
   if (current !== "home" && !(history.state && history.state.app)) history.pushState({ app: true }, "");
@@ -454,35 +475,58 @@ window.addEventListener("songchange", (e) => {
 // =========================================================
 //  2. LAYOUT PICKER
 // =========================================================
+// Layout cards, grouped (Strips / Single photo / Grids & collage), each
+// group 3 across. They flow in one after another; the last one picked is
+// highlighted when the guest comes back.
+const LAYOUT_GROUPS = ["Strips", "Single photo", "Grids & collage"];
+
 function buildLayoutCards() {
   const grid = $("layoutGrid");
   grid.innerHTML = "";
-  Object.entries(LAYOUTS).forEach(([id, l]) => {
-    const card = document.createElement("button");
-    card.className = "layoutCard";
-
-    // Mini drawing of the layout, using the real slot positions as %
-    const mini = document.createElement("div");
-    mini.className = "mini";
-    mini.style.aspectRatio = l.width + " / " + l.height;
-    l.slots.forEach((s) => {
-      const box = document.createElement("i");
-      box.style.left   = (s.x / l.width  * 100) + "%";
-      box.style.top    = (s.y / l.height * 100) + "%";
-      box.style.width  = (s.w / l.width  * 100) + "%";
-      box.style.height = (s.h / l.height * 100) + "%";
-      mini.appendChild(box);
-    });
-
-    card.appendChild(mini);
-    card.insertAdjacentHTML("beforeend", `<b>${l.name}</b><small>${l.hint}</small>`);
-    card.addEventListener("click", () => chooseLayout(id));
-    grid.appendChild(card);
+  const entries = Object.entries(LAYOUTS);
+  const groups = [...new Set([...LAYOUT_GROUPS, ...entries.map(([, l]) => l.group || "More")])];
+  let n = 0;
+  groups.forEach((group) => {
+    const inGroup = entries.filter(([, l]) => (l.group || "More") === group);
+    if (!inGroup.length) return;
+    const head = document.createElement("h3");
+    head.className = "layoutGroup";
+    head.textContent = group;
+    head.style.setProperty("--i", n++);
+    grid.appendChild(head);
+    inGroup.forEach(([id, l]) => grid.appendChild(layoutCard(id, l, n++)));
   });
+}
+
+function layoutCard(id, l, i) {
+  const card = document.createElement("button");
+  card.className = "layoutCard";
+  card.dataset.id = id;
+  card.style.setProperty("--i", i);
+
+  // Mini drawing of the layout, using the real slot positions as %
+  const mini = document.createElement("div");
+  mini.className = "mini";
+  mini.style.aspectRatio = l.width + " / " + l.height;
+  l.slots.forEach((s) => {
+    const box = document.createElement("i");
+    box.style.left   = (s.x / l.width  * 100) + "%";
+    box.style.top    = (s.y / l.height * 100) + "%";
+    box.style.width  = (s.w / l.width  * 100) + "%";
+    box.style.height = (s.h / l.height * 100) + "%";
+    mini.appendChild(box);
+  });
+
+  card.appendChild(mini);
+  card.insertAdjacentHTML("beforeend", `<b>${l.name}</b><small>${l.hint}</small>`);
+  card.addEventListener("click", () => { tick(); chooseLayout(id); });
+  return card;
 }
 
 function chooseLayout(id) {
   state.layoutId = id;
+  // highlighted when they come back to this screen
+  document.querySelectorAll(".layoutCard").forEach((c) => c.classList.toggle("selected", c.dataset.id === id));
   resetShots();
   show("booth");
 }
@@ -889,7 +933,12 @@ async function goToEdit() {
 
 // Colour, Effects and Filter each have a tab, so the screen stays tidy
 document.querySelectorAll(".editTab").forEach((tab) => tab.addEventListener("click", () => {
-  document.querySelectorAll(".editTab").forEach((t) => {
+  const tabs = [...document.querySelectorAll(".editTab")];
+  const from = tabs.findIndex((t) => t.classList.contains("active")), to = tabs.indexOf(tab);
+  if (from === to) return;
+  tick();
+  document.querySelectorAll(".pane").forEach((p) => p.style.setProperty("--from", (to > from ? 18 : -18) + "px"));
+  tabs.forEach((t) => {
     t.classList.toggle("active", t === tab);
     t.setAttribute("aria-selected", t === tab);
   });
@@ -897,15 +946,19 @@ document.querySelectorAll(".editTab").forEach((tab) => tab.addEventListener("cli
 }));
 
 function selectChip(wrap, chip) {
+  tick();
   wrap.querySelectorAll(".swatch").forEach((c) => c.classList.toggle("selected", c === chip));
 }
+// Chips flow in one after another (only the first few wait - the rest are off screen)
+const flowIn = (el, i) => el.style.setProperty("--i", Math.min(i, 8));
 
 function buildColourChips() {
   const wrap = $("colourChips");
   wrap.innerHTML = "";
-  COLOURS.forEach((c) => {
+  COLOURS.forEach((c, i) => {
     const chip = document.createElement("button");
     chip.className = "swatch colour" + (c.id === state.colourId ? " selected" : "");
+    flowIn(chip, i);
     chip.setAttribute("aria-label", c.name);
     const dot = document.createElement("canvas");   // the real paper: gradient / pattern too
     dot.width = dot.height = 88;
@@ -927,9 +980,10 @@ function buildEffectChips() {
   const wrap = $("effectChips");
   wrap.innerHTML = "";
   const c = colour();
-  EFFECTS.forEach((ef) => {
+  EFFECTS.forEach((ef, i) => {
     const chip = document.createElement("button");
     chip.className = "swatch" + (ef.id === state.effectId ? " selected" : "");
+    flowIn(chip, i);
     const thumb = document.createElement("canvas");
     thumb.width = thumb.height = 120;
     const ctx = thumb.getContext("2d");
@@ -956,9 +1010,10 @@ function buildFilterChips() {
   small.width = 96; small.height = 96;
   drawCover(small.getContext("2d"), state.shots[0], 0, 0, 96, 96);
 
-  FILTERS.forEach((f) => {
+  FILTERS.forEach((f, i) => {
     const chip = document.createElement("button");
     chip.className = "swatch" + (f.id === state.filterId ? " selected" : "");
+    flowIn(chip, i);
     const thumb = applyFilter(small, f);
     chip.appendChild(thumb);
     chip.insertAdjacentHTML("beforeend", `<small>${f.name}</small>`);
@@ -1330,8 +1385,10 @@ function renderGallery() {
   list.forEach((p, i) => {
     const item = document.createElement("button");
     item.className = "tile" + (p.private ? " private" : p.pending ? " pending" : mine[p.id] ? " mine" : "");
+    item.style.setProperty("--i", Math.min(i, 10));
     const img = document.createElement("img");
     img.loading = "lazy";
+    img.onload = () => img.classList.add("loaded");   // fade in once it's here
     img.src = photoSrc(p, 500);
     img.alt = "";
     item.appendChild(img);
@@ -1342,7 +1399,7 @@ function renderGallery() {
       item.appendChild(wish);
     }
     item.setAttribute("aria-label", "View photo " + (i + 1));
-    item.addEventListener("click", () => openLightbox(i));
+    item.addEventListener("click", () => openLightbox(i, img));
     grid.appendChild(item);
   });
 }
@@ -1360,12 +1417,46 @@ let lbIndex = 0;
 const lb = $("lightbox");
 const lbOpen = () => !lb.classList.contains("hidden");
 
-function openLightbox(i) {
+// The viewer grows out of the photo that was tapped, and shrinks back into
+// it when closed. `from` = the gallery picture.
+let lbFrom = null;
+let lbFromIndex = -1;   // which photo `lbFrom` shows
+
+// Move/scale the big picture so it sits exactly over `el` (for the zoom)
+function zoomFrames(el) {
+  const a = el.getBoundingClientRect(), b = $("lbImg").getBoundingClientRect();
+  if (!a.width || !b.width) return null;
+  const dx = a.left + a.width / 2 - (b.left + b.width / 2);
+  const dy = a.top + a.height / 2 - (b.top + b.height / 2);
+  return [
+    { transform: `translate(${dx}px, ${dy}px) scale(${a.width / b.width})`, borderRadius: "14px" },
+    { transform: "none", borderRadius: "4px" },
+  ];
+}
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function openLightbox(i, from) {
   // An entry in the history, so the phone's Back button closes the viewer
   // instead of leaving the app
   if (!lbOpen()) history.pushState({ lightbox: true }, "");
   lb.classList.remove("hidden");
   showPhoto(i);
+  lbFrom = from || null;
+  lbFromIndex = i;
+  const frames = lbFrom && !reduceMotion() && zoomFrames(lbFrom);
+  if (frames) $("lbImg").animate(frames, { duration: 380, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+}
+
+// Hide the viewer, shrinking back into its gallery picture if that's
+// the photo still showing
+function hideLightbox() {
+  const back = lbFrom && lbFrom.isConnected && lbIndex === lbFromIndex;   // still the photo that was tapped
+  const frames = back && !reduceMotion() && zoomFrames(lbFrom);
+  lbFrom = null;
+  if (!frames) return lb.classList.add("hidden");
+  lb.classList.add("closing");
+  $("lbImg").animate(frames.slice().reverse(), { duration: 300, easing: "cubic-bezier(0.4, 0, 0.2, 1)" })
+    .finished.then(() => { lb.classList.add("hidden"); lb.classList.remove("closing"); });
 }
 
 function showPhoto(i) {
@@ -1417,7 +1508,7 @@ function showPhoto(i) {
 
 function closeLightbox() {
   if (history.state && history.state.lightbox) history.back();   // popstate hides it
-  else lb.classList.add("hidden");
+  else hideLightbox();
 }
 
 $("lbClose").addEventListener("click", closeLightbox);

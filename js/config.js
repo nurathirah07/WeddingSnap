@@ -41,6 +41,7 @@ const CONFIG = {
 // ---------------------------------------------------------
 //  Layouts: how many photos and where they go.
 //  makeGrid() works out the slot positions for you.
+//  `group` = the heading it's shown under on the layout screen.
 // ---------------------------------------------------------
 function makeGrid({ width, cols, rows, slotW, slotH, margin, gap, footer }) {
   const slots = [];
@@ -59,28 +60,28 @@ function makeGrid({ width, cols, rows, slotW, slotH, margin, gap, footer }) {
 }
 
 const LAYOUTS = {
-  single:   { name: "Single", hint: "1 photo",
+  single:   { name: "Single", group: "Single photo", hint: "1 photo",
     ...makeGrid({ width: 1080, cols: 1, rows: 1, slotW: 960, slotH: 1080, margin: 60, gap: 0,  footer: 300 }) },
-  polaroid: { name: "Polaroid", hint: "1 square photo",
+  polaroid: { name: "Polaroid", group: "Single photo", hint: "1 square photo",
     ...makeGrid({ width: 1000, cols: 1, rows: 1, slotW: 880, slotH: 880,  margin: 60, gap: 0,  footer: 300 }) },
-  duo:      { name: "Duo", hint: "2 side by side",
+  duo:      { name: "Duo", group: "Grids & collage", hint: "2 side by side",
     ...makeGrid({ width: 1400, cols: 2, rows: 1, slotW: 630, slotH: 800,  margin: 50, gap: 40, footer: 280 }) },
-  strip2:   { name: "2-Grid", hint: "2 photo strip",
+  strip2:   { name: "2-Grid", group: "Strips", hint: "2 photo strip",
     ...makeGrid({ width: 600,  cols: 1, rows: 2, slotW: 520, slotH: 650,  margin: 40, gap: 20, footer: 380 }) },
-  strip3:   { name: "3-Cut", hint: "3 photo strip",
+  strip3:   { name: "3-Cut", group: "Strips", hint: "3 photo strip",
     ...makeGrid({ width: 600,  cols: 1, rows: 3, slotW: 520, slotH: 400,  margin: 40, gap: 20, footer: 340 }) },
-  strip4:   { name: "4-Cut", hint: "classic strip",
+  strip4:   { name: "4-Cut", group: "Strips", hint: "classic strip",
     ...makeGrid({ width: 600,  cols: 1, rows: 4, slotW: 520, slotH: 380,  margin: 40, gap: 18, footer: 320 }) },
-  grid4:    { name: "4-Grid", hint: "2 × 2 grid",
+  grid4:    { name: "4-Grid", group: "Grids & collage", hint: "2 × 2 grid",
     ...makeGrid({ width: 1080, cols: 2, rows: 2, slotW: 480, slotH: 600,  margin: 50, gap: 20, footer: 260 }) },
   // one big photo on top, two small ones under it
-  feature:  { name: "Big & Two", hint: "1 big + 2 small", width: 1080, height: 1560,
+  feature:  { name: "Big & Two", group: "Grids & collage", hint: "1 big + 2 small", width: 1080, height: 1560,
     slots: [
       { x: 60,  y: 60,  w: 960, h: 720 },
       { x: 60,  y: 800, w: 470, h: 470 },
       { x: 550, y: 800, w: 470, h: 470 },
     ] },
-  grid6:    { name: "6-Grid", hint: "2 × 3 grid",
+  grid6:    { name: "6-Grid", group: "Grids & collage", hint: "2 × 3 grid",
     ...makeGrid({ width: 1080, cols: 2, rows: 3, slotW: 475, slotH: 475,  margin: 50, gap: 30, footer: 260 }) },
 };
 
