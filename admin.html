@@ -111,11 +111,11 @@
         <h2>Frames</h2>
         <label class="btn primary small">
           + Add frames
-          <input type="file" id="addFrames" accept=".png,image/png" multiple hidden>
+          <input type="file" id="addFrames" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.avif,.svg,.heic,.heif" multiple hidden>
         </label>
       </div>
-      <p class="muted">PNG from Canva. Pink boxes show where the photos will go.</p>
-      <div class="dropZone" data-kind="frame">Drop png files here</div>
+      <p class="muted">PNG, JPG, WebP, GIF, AVIF or SVG (e.g. from Canva). Pink boxes show where the photos will go. In a JPG the photo areas must be one plain colour, since JPG can't be see-through.</p>
+      <div class="dropZone" data-kind="frame">Drop frame images here</div>
       <div class="frameGrid" id="frameGrid"></div>
     </section>
   </div>

@@ -4,7 +4,7 @@
 //  The GitHub Action (.github/workflows/deploy.yml) then finds the
 //  chorus + photo windows and republishes the site.
 // =========================================================
-import { findWindows, pickLayout, frameId } from "./frame-detect.js?v=dev";
+import { findWindows, pickLayout, frameId, FRAME_FILE } from "./frame-detect.js?v=dev";
 
 const $ = (id) => document.getElementById(id);
 const TOKEN_KEY = "weddingsnap.admin.token";
@@ -179,7 +179,7 @@ async function loadLibrary() {
     name: f.name, path: f.path, size: f.size, status: "live",
     info: songInfo.find((s) => s.src === f.path),
   }));
-  frames = frameFiles.filter((f) => /\.png$/i.test(f.name)).map((f) => ({
+  frames = frameFiles.filter((f) => FRAME_FILE.test(f.name)).map((f) => ({
     name: f.name, path: f.path, size: f.size, status: "live", rawUrl: f.download_url,
     info: frameInfo.find((s) => s.src === f.path),
   }));
@@ -255,17 +255,43 @@ function addSongs(fileList) {
 }
 
 async function addFrames(fileList) {
-  for (const file of fileList) {
-    if (!/\.png$/i.test(file.name)) { toast(file.name + " is not a png"); continue; }
+  for (let file of fileList) {
+    // iPhone photos (HEIC): turn into a JPG, if this browser can read them (Safari)
+    if (/\.(heic|heif)$/i.test(file.name)) {
+      file = await heicToJpeg(file);
+      if (!file) { toast("This browser can't open HEIC. Export the frame as JPG or PNG."); continue; }
+    }
+    if (!FRAME_FILE.test(file.name)) { toast(file.name + ": use PNG, JPG, WebP, GIF, AVIF or SVG"); continue; }
+    if (file.size > 15 * 1024 * 1024) { toast(file.name + " is too big (max 15 MB)"); continue; }
     const name = safeName(file.name);
     const path = "frames/" + name;
-    const preview = await analyseFrame(file);
+    let preview;
+    try {
+      preview = await analyseFrame(file);
+    } catch (err) {
+      toast("Can't open " + file.name + ". Export it again as PNG or JPG.");
+      continue;
+    }
     frames = frames.filter((f) => f.path !== path || f.status !== "new" || f.replacing);   // re-added: replace the staged copy
     const existing = frames.find((f) => f.path === path);
     if (existing) Object.assign(existing, { status: "new", file, preview, replacing: true });
     else frames.push({ name, path, size: file.size, status: "new", file, preview });
   }
   render();
+}
+
+async function heicToJpeg(file) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const c = document.createElement("canvas");
+    c.width = bitmap.width;
+    c.height = bitmap.height;
+    c.getContext("2d").drawImage(bitmap, 0, 0);
+    const blob = await new Promise((resolve) => c.toBlob(resolve, "image/jpeg", 0.92));
+    return blob && new File([blob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg" });
+  } catch (err) {
+    return null;
+  }
 }
 
 // Same detection GitHub will run, so the admin sees the result right away
@@ -277,10 +303,12 @@ async function analyseFrame(file) {
     i.onerror = reject;
     i.src = url;
   });
-  const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+  // An SVG without a set size reports 0 × 0: give it one
+  const w = img.naturalWidth || 1200, h = img.naturalHeight || 1800;
+  const scale = Math.min(1, 1600 / Math.max(w, h));
   const c = document.createElement("canvas");
-  c.width = Math.round(img.naturalWidth * scale);
-  c.height = Math.round(img.naturalHeight * scale);
+  c.width = Math.round(w * scale);
+  c.height = Math.round(h * scale);
   const ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0, c.width, c.height);
   const { slots, transparent } = findWindows(ctx.getImageData(0, 0, c.width, c.height));
@@ -422,7 +450,7 @@ function renderFrames() {
         (geo.slots.length === 1 ? " photo" : " photos");
     const info = document.createElement("div");
     info.className = "frameInfo";
-    info.innerHTML = `<b>${frame.name.replace(/\.png$/i, "")}</b> ${statusBadge(frame)}<small>${layoutName}</small>`;
+    info.innerHTML = `<b>${frame.name.replace(FRAME_FILE, "")}</b> ${statusBadge(frame)}<small>${layoutName}</small>`;
     if (frame.preview && !frame.preview.slots.length) {
       info.innerHTML += `<small class="error">Make the photo area transparent or one plain colour, then add it again.</small>`;
     }

@@ -1,6 +1,7 @@
 // =========================================================
-//  Scans frames/ for PNGs, finds the photo window(s) in each one
-//  and writes frames/frames.json (which the app reads).
+//  Scans frames/ for frame images (PNG, JPG, WebP, GIF, AVIF, SVG),
+//  finds the photo window(s) in each one and writes
+//  frames/frames.json (which the app reads).
 //  The detection itself lives in js/frame-detect.js (shared with
 //  admin.html).
 //
@@ -14,14 +15,24 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PNG } from "pngjs";
-import { findWindows, pickLayout, prettyName, frameId } from "../js/frame-detect.js";
+import sharp from "sharp";
+import { findWindows, pickLayout, prettyName, frameId, FRAME_FILE } from "../js/frame-detect.js";
 
 const DIR = "frames";
 const OUT_FILE = path.join(DIR, "frames.json");
 const MAX_SIZE = 2400;   // big Canva exports are scaled down to this (longest side)
 
 const old = fs.existsSync(OUT_FILE) ? JSON.parse(fs.readFileSync(OUT_FILE, "utf8")).frames : [];
-const files = fs.readdirSync(DIR).filter((f) => /\.png$/i.test(f)).sort();
+const files = fs.readdirSync(DIR).filter((f) => FRAME_FILE.test(f)).sort();
+
+// The image as RGBA pixels: { width, height, data }
+async function readPixels(src) {
+  if (/\.png$/i.test(src)) return PNG.sync.read(fs.readFileSync(src));
+  // SVG has no pixels of its own: draw it at a sharp size first
+  const image = /\.svg$/i.test(src) ? sharp(src, { density: 300 }) : sharp(src, { animated: false });
+  const { data, info } = await image.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  return { width: info.width, height: info.height, data };
+}
 const frames = [];
 
 for (const file of files) {
@@ -34,7 +45,13 @@ for (const file of files) {
     continue;
   }
 
-  const png = PNG.sync.read(fs.readFileSync(src));
+  let png;
+  try {
+    png = await readPixels(src);
+  } catch (err) {
+    console.warn(`⚠ ${file}: can't read this image (${err.message}) - export it as PNG or JPG`);
+    continue;
+  }
   const found = findWindows(png);
   if (!found.slots.length) {
     console.warn(`⚠ ${file}: no photo window found - make the photo area transparent or a plain colour`);

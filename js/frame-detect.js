@@ -11,7 +11,13 @@
 const MIN_AREA = 0.02;   // a window is at least 2% of the frame
 const MIN_FILL = 0.85;   // ...and fills most of its bounding box (= rectangle-ish)
 
-// image = { width, height, data } with RGBA bytes (ImageData or pngjs)
+// Image types a frame can be. PNG / WebP / GIF / AVIF / SVG can have
+// see-through windows; JPG can't, so its windows must be a different
+// colour from the frame. (Compression noise in JPG / WebP is too small to
+// matter: tested down to quality 70.)
+export const FRAME_FILE = /\.(png|jpe?g|webp|gif|avif|svg)$/i;
+
+// image = { width, height, data } with RGBA bytes (ImageData, pngjs or sharp)
 export function findWindows({ width, height, data }) {
   const step = Math.max(2, Math.round(Math.max(width, height) / 1000));   // check every Nth pixel
   const gw = Math.ceil(width / step), gh = Math.ceil(height / step);
@@ -92,12 +98,18 @@ export function pickLayout(slots, id) {
   return id;   // unusual shape: the app makes a layout just for this frame
 }
 
-// "rose-gold_frame.png" → "Rose Gold Frame"
+const withoutExt = (file) => file.replace(FRAME_FILE, "");
+
+// "rose-gold_frame.jpg" → "Rose Gold Frame"
 export function prettyName(file) {
-  return file.replace(/\.png$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return withoutExt(file).replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// "Rose Gold.png" → "png-rose-gold"
+// "Rose Gold.png" → "png-rose-gold", "Rose Gold.jpg" → "png-rose-gold-jpg"
+// (PNG ids stay as they always were; other types get their extension so
+// "Rose Gold.png" and "Rose Gold.jpg" can both exist)
 export function frameId(file) {
-  return "png-" + file.replace(/\.png$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const ext = (file.match(FRAME_FILE) || ["", "png"])[1].toLowerCase();
+  const id = "png-" + withoutExt(file).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return ext === "png" ? id : id + "-" + ext;
 }
