@@ -120,6 +120,68 @@
     </section>
   </div>
 
+  <!-- ============ Photos & wishes (works without GitHub) ============ -->
+  <section class="card" id="albumCard">
+    <div class="cardHead">
+      <h2>Photos &amp; wishes</h2>
+      <a class="btn ghost small" href="./slideshow.html" target="_blank">Open slideshow ↗</a>
+    </div>
+    <p class="muted">
+      Hide or delete any guest photo, and read every wish. Hidden photos leave the
+      gallery and the slideshow but stay in your Drive.
+    </p>
+    <div id="albumLogin">
+      <label class="field">
+        <span>Admin key</span>
+        <input id="adminKey" type="password" placeholder="The ADMIN_KEY in your Apps Script" autocomplete="off">
+      </label>
+      <div class="row left">
+        <button class="btn primary" id="albumConnect">Open album</button>
+      </div>
+      <p class="error" id="albumError"></p>
+    </div>
+    <div id="albumView" class="hidden">
+      <div class="albumBar">
+        <div class="tabs albumTabs">
+          <button class="tab active" data-view="photos">Photos <span id="nPhotos"></span></button>
+          <button class="tab" data-view="wishes">Wishes <span id="nWishes"></span></button>
+        </div>
+        <div class="row">
+          <button class="btn ghost small" id="albumRefresh">Refresh</button>
+          <button class="btn ghost small" id="wishCsv">Download wishes</button>
+          <button class="btn link" id="albumLock">Lock</button>
+        </div>
+      </div>
+      <div class="albumGrid" id="albumGrid"></div>
+      <ol class="wishList hidden" id="wishList"></ol>
+    </div>
+  </section>
+
+  <!-- ============ QR table card ============ -->
+  <section class="card" id="qrCard">
+    <h2>Table card</h2>
+    <p class="muted">Print one for each table. Guests scan the code to open the photobooth.</p>
+    <div class="qrGrid">
+      <canvas id="tableCard" width="1240" height="1748" aria-label="Table card preview"></canvas>
+      <div>
+        <label class="field">
+          <span>Link in the QR code</span>
+          <input id="qrLink" autocomplete="off">
+          <small class="hint">Your live site. Scan the preview with your phone to check it.</small>
+        </label>
+        <label class="field">
+          <span>Line under the code</span>
+          <input id="qrLine" maxlength="60" value="Scan to snap a photo &amp; leave a wish">
+        </label>
+        <div class="row left">
+          <button class="btn primary" id="qrPrint">Print (4 per A4)</button>
+          <button class="btn ghost" id="qrDownload">Download image</button>
+        </div>
+        <small class="hint">Uses the title, names and date from Wedding details.</small>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ Pending changes ============ -->
   <div class="publishBar hidden" id="publishBar">
     <div>
@@ -136,6 +198,9 @@
 
   <script src="js/config.js?v=dev"></script>
   <script type="module" src="js/admin.js?v=dev"></script>
+  <script src="js/vendor/qrcode.js?v=dev"></script>
+  <script src="js/qr.js?v=dev"></script>
+  <script src="js/admin-album.js?v=dev"></script>
   <script>
     // Browsers block this page's script when it's opened as a file
     // (double-click / file:///...). Explain instead of doing nothing.

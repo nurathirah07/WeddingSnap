@@ -219,11 +219,28 @@
       <img id="lbImg" alt="">
       <button class="lbNav" id="lbNext" aria-label="Next photo"><svg class="ic" aria-hidden="true"><use href="#i-next"/></svg></button>
     </div>
+    <p class="lbWish hidden" id="lbWish"></p>
     <div class="row">
       <button class="btn primary" id="lbSave">Save</button>
       <button class="btn ghost light hidden" id="lbShare">Share to album</button>
       <button class="btn danger hidden" id="lbDelete">Delete</button>
     </div>
+  </div>
+
+  <!-- Wish (ucapan) for the couple, asked before a photo is shared. Optional. -->
+  <div class="ask hidden" id="wishSheet" role="dialog" aria-modal="true" aria-labelledby="wishTitle">
+    <form class="askCard wishCard" id="wishForm">
+      <button type="button" class="iconBtn wishClose" id="wishClose" aria-label="Not now"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
+      <p class="eyebrow">Ucapan · optional</p>
+      <h3 id="wishTitle">A wish for <span id="wishCouple"></span></h3>
+      <textarea id="wishText" maxlength="300" rows="3" placeholder="Selamat pengantin baru! Semoga berbahagia hingga ke Jannah…"></textarea>
+      <div class="wishRow">
+        <input id="wishName" maxlength="40" placeholder="Your name" autocomplete="name">
+        <small id="wishCount">0 / 300</small>
+      </div>
+      <button class="btn primary big" type="submit">Share to album</button>
+      <small class="wishNote">Your photo and wish will be in everyone's gallery</small>
+    </form>
   </div>
 
   <!-- "Are you sure?" sheet. Used instead of the browser's confirm(), which

@@ -63,35 +63,50 @@ const Mine = {
   token(id) { return this.all()[id]; },
 };
 
-// Private photos: kept only in this browser (IndexedDB), never uploaded.
-// Shown in the gallery's "Mine" tab for this guest only.
-const Private = {
+// Photos kept in this browser (IndexedDB):
+//   private - private photos, never uploaded. Shown in the gallery's
+//             "Mine" tab for this guest only.
+//   outbox  - public photos waiting to reach the album (bad signal at the
+//             venue). Sent in the background, then removed (see Sender).
+const DB = {
   db: null,
   open() {
     if (!this.db) this.db = new Promise((resolve, reject) => {
-      const req = indexedDB.open("weddingsnap", 1);
-      req.onupgradeneeded = () => req.result.createObjectStore("private", { keyPath: "id" });
+      const req = indexedDB.open("weddingsnap", 2);
+      req.onupgradeneeded = () => ["private", "outbox"].forEach((name) => {
+        if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: "id" });
+      });
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
     return this.db;
   },
-  async run(mode, fn) {
+  async run(store, mode, fn) {
     const db = await this.open();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction("private", mode);
-      const req = fn(tx.objectStore("private"));
+      const tx = db.transaction(store, mode);
+      const req = fn(tx.objectStore(store));
       tx.oncomplete = () => resolve(req && req.result);
       tx.onerror = () => reject(tx.error);
     });
   },
+};
+
+const Private = {
   async add(blob) {
     const id = "private-" + randomToken();
-    await this.run("readwrite", (s) => s.put({ id, blob, time: Date.now() }));
+    await DB.run("private", "readwrite", (s) => s.put({ id, blob, time: Date.now() }));
     return id;
   },
-  all()      { return this.run("readonly", (s) => s.getAll()).catch(() => []); },
-  remove(id) { return this.run("readwrite", (s) => s.delete(id)); },
+  all()      { return DB.run("private", "readonly", (s) => s.getAll()).catch(() => []); },
+  remove(id) { return DB.run("private", "readwrite", (s) => s.delete(id)); },
+};
+
+// { id (= the upload token), blob, time, wish, name, tries }
+const Outbox = {
+  put(item)  { return DB.run("outbox", "readwrite", (s) => s.put(item)); },
+  all()      { return DB.run("outbox", "readonly", (s) => s.getAll()).catch(() => []); },
+  remove(id) { return DB.run("outbox", "readwrite", (s) => s.delete(id)); },
 };
 
 // Draw `img` to fill (x, y, w, h) completely, cropping the overflow ("cover")
@@ -204,9 +219,10 @@ function goBack() {
 
 window.addEventListener("popstate", () => {
   if (ignorePop) { ignorePop = false; return; }
-  // Back while "Are you sure?" is open = Cancel (and stay where we are)
-  if (askDone) {
-    askDone(false);
+  // Back while "Are you sure?" or the wish card is open = Cancel (and stay where we are)
+  if (askDone || wishDone) {
+    if (askDone) askDone(false);
+    if (wishDone) wishDone(null);
     history.pushState(lbOpen() ? { lightbox: true } : { app: true }, "");
     return;
   }
@@ -968,6 +984,12 @@ document.querySelectorAll(".privOpt").forEach((opt) => opt.addEventListener("cli
 }));
 
 $("doneBtn").addEventListener("click", async () => {
+  // Sharing: ask for a wish (ucapan) for the couple first - optional
+  let wish = {};
+  if (state.privacy === "public" && CONFIG.SCRIPT_URL) {
+    wish = await askWish();
+    if (!wish) return;   // closed the card: stay here
+  }
   $("doneBtn").disabled = true;
   stopCamera();
 
@@ -981,24 +1003,146 @@ $("doneBtn").addEventListener("click", async () => {
   $("doneBtn").disabled = false;
   show("result");
   if (state.privacy === "private") keepPrivate();
-  else upload();
+  else upload(wish);
 });
+
+// ---------- Wish card (ucapan) ----------
+const NAME_KEY = "weddingsnap.name";   // remembered for their next photo
+let wishDone = null;
+
+// Resolves { name, wish } (both may be empty) or null if they closed it
+function askWish() {
+  if (wishDone) wishDone(null);
+  return new Promise((resolve) => {
+    $("wishCouple").textContent = CONFIG.COUPLE;
+    $("wishName").value = localStorage.getItem(NAME_KEY) || "";
+    $("wishText").value = "";
+    countWish();
+    $("wishSheet").classList.remove("hidden");
+    wishDone = (answer) => {
+      wishDone = null;
+      $("wishSheet").classList.add("hidden");
+      if (document.activeElement) document.activeElement.blur();   // put the keyboard away
+      resolve(answer);
+    };
+  });
+}
+function countWish() {
+  $("wishCount").textContent = $("wishText").value.length + " / " + $("wishText").maxLength;
+}
+$("wishText").addEventListener("input", countWish);
+$("wishForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = $("wishName").value.trim();
+  const wish = $("wishText").value.trim();
+  if (name) localStorage.setItem(NAME_KEY, name);
+  if (wishDone) wishDone({ name, wish });
+});
+$("wishClose").addEventListener("click", () => wishDone && wishDone(null));
+$("wishSheet").addEventListener("click", (e) => { if (e.target === $("wishSheet") && wishDone) wishDone(null); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && wishDone) wishDone(null); });
 
 // =========================================================
 //  5. RESULT  (upload + save)
 // =========================================================
 // Upload a JPEG (data: URL) to the Drive album. Returns the new photo's id.
-async function sendToAlbum(dataUrl) {
-  const token = randomToken();
+// The token is the photo's own key: sending it again never makes a copy.
+async function sendToAlbum(dataUrl, { token = randomToken(), wish = "", name = "" } = {}) {
   // text/plain body = no CORS preflight, which Apps Script can't answer
   const res = await fetch(CONFIG.SCRIPT_URL, {
     method: "POST",
-    body: JSON.stringify({ action: "upload", image: dataUrl, token, layout: state.layoutId }),
+    body: JSON.stringify({ action: "upload", image: dataUrl, token, wish, name }),
   });
   const data = await res.json();
-  if (!data.ok) throw new Error(data.error);
+  if (!data.ok) {
+    const err = new Error(data.error);
+    err.server = true;   // the album answered "no" (not a connection problem)
+    throw err;
+  }
   Mine.add(data.id, token);
   return data.id;
+}
+
+// =========================================================
+//  Sending in the background. A public photo is first saved on the
+//  phone (Outbox), then sent. With a bad signal it stays there and is
+//  tried again: after a few seconds (then longer and longer), when the
+//  phone is back online, and when the app is opened again. Guests can
+//  carry on taking photos meanwhile.
+// =========================================================
+async function queuePhoto(blob, { wish = "", name = "" } = {}) {
+  const item = { id: randomToken(), blob, time: Date.now(), wish, name, tries: 0 };
+  await Outbox.put(item);
+  return item.id;
+}
+
+const Sender = (() => {
+  let busy = null;
+  let timer = null;
+  let delay = 4000;
+
+  // Send the oldest waiting photo, then the next... Stops at the first
+  // failure. Returns true when the outbox is empty.
+  async function run() {
+    for (;;) {
+      const items = (await Outbox.all()).sort((a, b) => a.time - b.time);
+      if (!items.length) return true;
+      const item = items[0];
+      try {
+        const id = await sendToAlbum(await blobToDataUrl(item.blob), { token: item.id, wish: item.wish, name: item.name });
+        await Outbox.remove(item.id);
+        window.dispatchEvent(new CustomEvent("photosent", { detail: { token: item.id, id } }));
+      } catch (err) {
+        console.warn("Photo not sent yet:", err);
+        // The album keeps refusing it (not a signal problem): keep it as a
+        // private photo instead, so it's never lost and the queue moves on
+        if (err.server && ++item.tries >= 3) {
+          await Private.add(item.blob);
+          await Outbox.remove(item.id);
+          toast("A photo couldn't be shared. It's kept under Gallery → Mine.");
+          continue;
+        }
+        await Outbox.put(item);
+        return false;
+      }
+    }
+  }
+
+  function flush() {
+    if (!CONFIG.SCRIPT_URL) return Promise.resolve(false);
+    if (!busy) {
+      clearTimeout(timer);
+      busy = run().catch(() => false).then((done) => {
+        busy = null;
+        if (done) delay = 4000;
+        else {
+          timer = setTimeout(flush, delay);
+          delay = Math.min(60000, delay * 2);
+        }
+        return done;
+      });
+    }
+    return busy;
+  }
+
+  window.addEventListener("online", flush);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) flush(); });
+  return { flush };
+})();
+
+const waitingFor = new Set();   // tokens the result screen is watching
+
+// A photo arrived in the album. If it was waiting from earlier, say so.
+window.addEventListener("photosent", (e) => {
+  const { token } = e.detail;
+  if (state.final && state.final.token === token && current === "result") showSent();
+  if (!waitingFor.has(token)) toast("Your photo reached the album ✓");
+  if (current === "gallery") loadGallery();
+});
+
+function showSent() {
+  $("uploadStatus").className = "uploadStatus ok";
+  $("uploadStatus").textContent = "Shared to the couple's album ✓";
 }
 
 const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
@@ -1023,16 +1167,19 @@ async function keepPrivate() {
 
 // Changed their mind on the result screen: share the private photo after all
 $("makePublicBtn").addEventListener("click", async () => {
+  const wish = await askWish();
+  if (!wish) return;
   $("makePublicBtn").classList.add("hidden");
   const privateId = state.final.privateId;
-  if (await upload() && privateId) {
+  if (await upload(wish) && privateId) {
     Private.remove(privateId).catch(() => {});
     state.final.privateId = null;
   }
 });
 
-// Returns true once the photo is in the album
-async function upload() {
+// Returns true once the photo is in the album, or safely waiting on the
+// phone to be sent
+async function upload(wish = {}) {
   const status = $("uploadStatus");
   $("makePublicBtn").classList.add("hidden");
   if (!CONFIG.SCRIPT_URL) {
@@ -1043,18 +1190,36 @@ async function upload() {
   status.className = "uploadStatus sending";
   status.textContent = "Sending to the couple's album…";
 
+  let token;
   try {
-    await sendToAlbum(state.final.dataUrl);
-    status.className = "uploadStatus ok";
-    status.textContent = "Shared to the couple's album ✓";
-    return true;
+    token = await queuePhoto(state.final.blob, wish);
   } catch (err) {
-    console.warn(err);
-    status.className = "uploadStatus fail";
-    status.innerHTML = 'Couldn\'t send (check your internet). <button class="btn link" id="retryUpload">Try again</button>';
-    $("retryUpload").addEventListener("click", upload);
-    return false;
+    // This browser can't store it (rare): send it straight away instead
+    try {
+      await sendToAlbum(state.final.dataUrl, wish);
+      showSent();
+      return true;
+    } catch (e) {
+      console.warn(e);
+      status.className = "uploadStatus fail";
+      status.innerHTML = 'Couldn\'t send (check your internet). <button class="btn link" id="retryUpload">Try again</button>';
+      $("retryUpload").addEventListener("click", () => upload(wish));
+      return false;
+    }
   }
+
+  state.final.token = token;
+  waitingFor.add(token);
+  await Sender.flush();
+  waitingFor.delete(token);
+  const stillWaiting = (await Outbox.all()).some((item) => item.id === token);
+  if (!stillWaiting) {
+    showSent();
+  } else if (state.final.token === token) {
+    status.className = "uploadStatus queued";
+    status.textContent = "Saved on your phone. It will reach the album by itself when the signal is back - carry on snapping!";
+  }
+  return true;
 }
 
 // Phones: open the share sheet ("Save Image"). Computers: normal download.
@@ -1082,16 +1247,20 @@ $("againBtn").addEventListener("click", () => {
 // =========================================================
 //  6. GALLERY
 // =========================================================
-let galleryPhotos = [];   // public photos in the Drive album
+let galleryPhotos = [];   // public photos in the Drive album { id, time, wish?, name? }
 let privatePhotos = [];   // this phone's private photos { id, time, private, blob, url }
+let pendingPhotos = [];   // shared, but still waiting on the phone to be sent { ..., pending }
 let galleryList = [];     // the photos showing right now (Everyone or Mine)
 let galleryTab = "all";
 const thumbUrl = (id, size) => `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
 const photoSrc = (p, size) => p.url || thumbUrl(p.id, size);
 
+// Photos stored on this phone (private + waiting to send), shown under Mine
 async function loadPrivate() {
-  privatePhotos.forEach((p) => URL.revokeObjectURL(p.url));
-  privatePhotos = (await Private.all()).map((p) => ({ ...p, private: true, url: URL.createObjectURL(p.blob) }));
+  [...privatePhotos, ...pendingPhotos].forEach((p) => URL.revokeObjectURL(p.url));
+  const [priv, waiting] = await Promise.all([Private.all(), Outbox.all()]);
+  privatePhotos = priv.map((p) => ({ ...p, private: true, url: URL.createObjectURL(p.blob) }));
+  pendingPhotos = waiting.map((p) => ({ ...p, pending: true, url: URL.createObjectURL(p.blob) }));
 }
 
 async function loadGallery() {
@@ -1111,16 +1280,22 @@ async function loadGallery() {
     galleryPhotos = data.photos;
     renderGallery();
   } catch (err) {
+    // No signal: still show what's on this phone (Mine), and say so
     console.warn(err);
-    msg.textContent = "Couldn't load the gallery. Pull to refresh or tap ⟳.";
+    renderGallery();
+    if (galleryTab === "all" || !galleryList.length) {
+      msg.classList.remove("count");
+      msg.textContent = "Can't reach the album right now (weak signal?). Tap ⟳ to try again.";
+    }
   }
 }
 
 function renderGallery() {
   const mine = Mine.all();
-  // Everyone = public album only. Mine = my public uploads + my private photos.
+  // Everyone = public album only. Mine = my public uploads + my private
+  // photos + shared ones still waiting to be sent.
   const list = galleryTab === "mine"
-    ? [...privatePhotos, ...galleryPhotos.filter((p) => mine[p.id])].sort((a, b) => b.time - a.time)
+    ? [...privatePhotos, ...pendingPhotos, ...galleryPhotos.filter((p) => mine[p.id])].sort((a, b) => b.time - a.time)
     : galleryPhotos;
   galleryList = list;
   $("galleryMsg").classList.toggle("count", list.length > 0);   // plain text, not a card
@@ -1134,12 +1309,18 @@ function renderGallery() {
   grid.innerHTML = "";
   list.forEach((p, i) => {
     const item = document.createElement("button");
-    item.className = "tile" + (p.private ? " private" : mine[p.id] ? " mine" : "");
+    item.className = "tile" + (p.private ? " private" : p.pending ? " pending" : mine[p.id] ? " mine" : "");
     const img = document.createElement("img");
     img.loading = "lazy";
     img.src = photoSrc(p, 500);
     img.alt = "";
     item.appendChild(img);
+    if (p.wish) {
+      const wish = document.createElement("span");
+      wish.className = "tileWish";
+      wish.textContent = "“" + p.wish + "”";
+      item.appendChild(wish);
+    }
     item.setAttribute("aria-label", "View photo " + (i + 1));
     item.addEventListener("click", () => openLightbox(i));
     grid.appendChild(item);
@@ -1177,9 +1358,10 @@ function showPhoto(i) {
   // then swap in the sharp one once it has downloaded
   const img = $("lbImg");
   const id = lbPhoto.id;
+  const local = !!lbPhoto.blob;   // on this phone (private / waiting to send)
   img.src = photoSrc(lbPhoto, 500);
-  img.classList.toggle("loading", !lbPhoto.private);
-  if (!lbPhoto.private) {
+  img.classList.toggle("loading", !local);
+  if (!local) {
     const big = new Image();
     big.onload = () => {
       if (lbPhoto && lbPhoto.id === id) { img.src = big.src; img.classList.remove("loading"); }
@@ -1192,9 +1374,25 @@ function showPhoto(i) {
   $("lbCount").textContent = n > 1 ? `${lbIndex + 1} / ${n}` : "";
   $("lbPrev").classList.toggle("hidden", n < 2);
   $("lbNext").classList.toggle("hidden", n < 2);
-  $("lbDelete").classList.toggle("hidden", !lbPhoto.private && !Mine.token(id));
+  $("lbDelete").classList.toggle("hidden", !local && !Mine.token(id));
   $("lbShare").classList.toggle("hidden", !lbPhoto.private || !CONFIG.SCRIPT_URL);
-  $("lbCount").textContent += lbPhoto.private ? (n > 1 ? "  ·  " : "") + "PRIVATE" : "";
+  const tag = lbPhoto.private ? "PRIVATE" : lbPhoto.pending ? "SENDING…" : "";
+  $("lbCount").textContent += tag ? (n > 1 ? "  ·  " : "") + tag : "";
+
+  // The guest's wish under the photo
+  const wish = $("lbWish");
+  wish.classList.toggle("hidden", !lbPhoto.wish);
+  wish.replaceChildren();
+  if (lbPhoto.wish) {
+    const text = document.createElement("span");
+    text.textContent = "“" + lbPhoto.wish + "”";
+    wish.append(text);
+    if (lbPhoto.name) {
+      const from = document.createElement("small");
+      from.textContent = lbPhoto.name;
+      wish.append(from);
+    }
+  }
 }
 
 function closeLightbox() {
@@ -1231,20 +1429,22 @@ document.addEventListener("keydown", (e) => {
 
 // Drive images can't be read by our page (CORS), so open the download link
 $("lbSave").addEventListener("click", () => {
-  if (lbPhoto.private) savePhoto(lbPhoto.blob, "wedding-snap-" + lbPhoto.time + ".jpg");
+  if (lbPhoto.blob) savePhoto(lbPhoto.blob, "wedding-snap-" + lbPhoto.time + ".jpg");
   else window.open(`https://drive.google.com/uc?export=download&id=${lbPhoto.id}`, "_blank");
 });
 
-// Private → public: upload it, then forget the private copy
+// Private → public: move it to the outbox (with a wish), then it sends
 $("lbShare").addEventListener("click", async () => {
-  if (!(await ask("Share this photo to the couple's album? Everyone will be able to see it.", "Share"))) return;
   const photo = lbPhoto;
+  const wish = await askWish();
+  if (!wish) return;
   $("lbShare").disabled = true;
   try {
-    await sendToAlbum(await blobToDataUrl(photo.blob));
+    await queuePhoto(photo.blob, wish);
     await Private.remove(photo.id);
     closeLightbox();
-    toast("Shared to the album");
+    toast("Sharing to the album…");
+    Sender.flush();
     loadGallery();
   } catch (err) {
     toast("Couldn't share: " + err.message);
@@ -1253,11 +1453,15 @@ $("lbShare").addEventListener("click", async () => {
 });
 
 $("lbDelete").addEventListener("click", async () => {
-  if (lbPhoto.private) {
-    if (!(await ask("Delete this private photo? It isn't saved anywhere else.", "Delete", true))) return;
-    await Private.remove(lbPhoto.id).catch(() => {});
+  if (lbPhoto.private || lbPhoto.pending) {
+    const question = lbPhoto.private
+      ? "Delete this private photo? It isn't saved anywhere else."
+      : "Stop sending this photo and delete it?";
+    if (!(await ask(question, "Delete", true))) return;
+    await (lbPhoto.private ? Private : Outbox).remove(lbPhoto.id).catch(() => {});
     URL.revokeObjectURL(lbPhoto.url);
     privatePhotos = privatePhotos.filter((p) => p.id !== lbPhoto.id);
+    pendingPhotos = pendingPhotos.filter((p) => p.id !== lbPhoto.id);
     closeLightbox();
     renderGallery();
     toast("Photo deleted");
@@ -1287,3 +1491,4 @@ $("lbDelete").addEventListener("click", async () => {
 buildLayoutCards();
 framesReady.then(buildLayoutCards);   // again, now including frame-only layouts
 resetShots();
+Sender.flush();   // photos left waiting from last time (bad signal) go now

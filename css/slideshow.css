@@ -1,0 +1,227 @@
+/* =========================================================
+   Live slideshow (slideshow.html) - made for a TV / projector.
+   Sizes use vw/vh so it fills any screen.
+   ========================================================= */
+html:has(body.show) { background: #1b1418; }
+body.show {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  overflow: hidden;
+  background: #1b1418;
+  color: #fff;
+  cursor: default;
+}
+body.show.noCursor { cursor: none; }
+
+/* ---------- Slides ---------- */
+.stage { position: absolute; inset: 0; }
+.slide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 5vw;
+  padding: 12vh 7vw 13vh;
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+.slide.in { opacity: 1; }
+.slide.out { opacity: 0; }
+
+/* blurred copy of the photo filling the screen */
+.slideBg {
+  position: absolute;
+  inset: -8%;
+  z-index: -1;
+  background: center / cover no-repeat;
+  filter: blur(48px) saturate(1.25) brightness(0.55);
+  transform: scale(1.05);
+  transition: transform 10s linear;
+}
+.slide.in .slideBg { transform: scale(1.15); }
+.slide::after {   /* soft dark edges so the text always reads */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(ellipse at center, rgba(27, 20, 24, 0) 40%, rgba(27, 20, 24, 0.6));
+}
+
+/* the photo, like a print on the table */
+.slidePrint {
+  position: relative;
+  margin: 0;
+  justify-self: center;
+  height: 74vh;
+  display: grid;
+  place-items: center;
+  transform: rotate(var(--tilt)) scale(0.94) translateY(2vh);
+  transition: transform 1.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.slide.in .slidePrint { transform: rotate(var(--tilt)) scale(1); }
+.slidePrint img {
+  max-height: 74vh;
+  max-width: 40vw;
+  border-radius: 6px;
+  box-shadow: 0 3vh 8vh rgba(0, 0, 0, 0.5), 0 0.5vh 1.5vh rgba(0, 0, 0, 0.3);
+  animation: slowZoom 10s linear forwards;
+}
+@keyframes slowZoom { from { transform: scale(1); } to { transform: scale(1.035); } }
+.slideNew {
+  position: absolute;
+  top: -1.6vh; right: -1.6vh;
+  padding: 0.9vh 1.6vh;
+  border-radius: 999px;
+  background: #f2a9cb;
+  color: #2a1f22;
+  font-size: 1.6vh;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  box-shadow: 0 1vh 3vh rgba(0, 0, 0, 0.3);
+  animation: pop 0.6s 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes pop { from { transform: scale(0); } }
+
+/* the wish (or the couple's names) next to the photo */
+.slideWords {
+  max-width: 38vw;
+  text-shadow: 0 0.3vh 2vh rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(3vh);
+  transition: opacity 1.2s 0.5s ease, transform 1.4s 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.slide.in .slideWords { opacity: 1; transform: none; }
+.slideWish {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: calc(5.2vh - var(--len, 0) * 2.2vh);
+  line-height: 1.32;
+}
+.slideWish::before {
+  content: "“";
+  display: block;
+  height: 8vh;
+  font-family: var(--serif);
+  font-size: 18vh;
+  line-height: 1;
+  color: #f2a9cb;
+}
+.slideFrom {
+  margin: 2.5vh 0 0;
+  font-family: var(--script);
+  font-size: 6vh;
+  color: #f6c4da;
+}
+.slideTitle {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 9vh;
+  line-height: 1.02;
+}
+.slideCouple {
+  margin: 1.5vh 0 0;
+  font-family: var(--script);
+  font-size: 7vh;
+  color: #f6c4da;
+}
+
+/* ---------- Corners ---------- */
+.showBrand {
+  position: fixed;
+  top: 4vh; left: 4vw;
+  display: flex;
+  align-items: center;
+  gap: 1.6vw;
+  z-index: 2;
+}
+.showMono {
+  font-family: var(--script);
+  font-size: 6.5vh;
+  line-height: 1;
+}
+.showMeta { display: flex; flex-direction: column; gap: 0.4vh; }
+.showMeta b { font-family: var(--serif); font-weight: 400; font-size: 2.4vh; }
+.showMeta small { font-size: 1.5vh; letter-spacing: 0.25em; opacity: 0.7; }
+
+.showJoin {
+  position: fixed;
+  right: 3vw; bottom: 4vh;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1.4vw;
+  padding: 1.2vh 2vh 1.2vh 1.2vh;
+  border-radius: 2.4vh;
+  background: rgba(255, 250, 247, 0.94);
+  color: var(--ink);
+  font-size: 1.8vh;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: 0 2vh 5vh rgba(0, 0, 0, 0.3);
+}
+.showQr { display: grid; padding: 0.8vh; background: #fff; border-radius: 1.4vh; }
+.showQr canvas { display: block; }
+.showJoin .showQr canvas { width: 11vh !important; height: 11vh !important; }
+
+.showCount {
+  position: fixed;
+  left: 4vw; bottom: 4vh;
+  z-index: 2;
+  margin: 0;
+  font-size: 1.6vh;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+/* ---------- Before the first photo ---------- */
+.showEmpty {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background:
+    radial-gradient(circle at 25% 30%, rgba(238, 119, 173, 0.45), transparent 45%),
+    radial-gradient(circle at 75% 65%, rgba(152, 170, 226, 0.45), transparent 45%),
+    linear-gradient(140deg, #3a2232, #2a1f2e 50%, #232338);
+}
+.showEmpty .eyebrow { color: rgba(255, 255, 255, 0.7); }
+.showEmpty .display { color: #fff; font-size: 11vh; }
+.showEmpty .couple { color: #f6c4da; font-size: 6vh; }
+.showEmpty .showQr.big { margin: 4vh 0 2vh; padding: 1.6vh; border-radius: 2.4vh; }
+.showEmpty .showQr.big canvas { width: 26vh !important; height: 26vh !important; }
+.showEmptyHint { margin: 0; font-size: 2.2vh; line-height: 1.5; color: rgba(255, 255, 255, 0.8); }
+body.show:has(.showEmpty:not(.hidden)) .showJoin,
+body.show:has(.showEmpty:not(.hidden)) .showCount { display: none; }
+
+.showHint {
+  position: fixed;
+  top: 4vh; right: 4vw;
+  z-index: 4;
+  margin: 0;
+  padding: 1vh 2vh;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 1.6vh;
+  transition: opacity 0.8s;
+}
+.showHint.gone { opacity: 0; pointer-events: none; }
+
+/* A TV turned sideways / a phone: photo on top, words below */
+@media (max-aspect-ratio: 1/1) {
+  .slide { grid-template-columns: 1fr; grid-template-rows: auto auto; gap: 3vh; padding: 14vh 6vw 18vh; text-align: center; }
+  .slidePrint, .slidePrint img { height: auto; max-height: 52vh; max-width: 86vw; }
+  .slideWords { max-width: none; justify-self: center; }
+  .slideWish { font-size: calc(3.4vh - var(--len, 0) * 1.2vh); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slideBg, .slidePrint, .slidePrint img, .slideWords { transition: none; animation: none; }
+}

@@ -12,9 +12,12 @@ No app download, no login. Total cost: RM0.
 - **Frames:** themed frames (Noir, Ivory, Blush, Sage, Film), plus your own Canva PNGs. Drop them in `frames/` and the photo windows are found automatically.
 - **Retakes:** tap any photo on the edit screen to retake just that one
 - **Gallery picks:** choose a photo from the phone instead of the camera
-- **Uploads:** photos go automatically to Google Drive
+- **Uploads:** photos go automatically to Google Drive. With a bad signal they wait on the phone and send by themselves later (never twice).
+- **Wishes (ucapan):** guests can add their name and a short wish when they share a photo
+- **Live slideshow:** `slideshow.html` on a TV or projector shows new photos as they arrive, with their wishes
 - **Shared gallery:** everyone's photos, with a "Mine" tab
-- **Delete:** guests can delete their own uploads, but not anyone else's
+- **Delete:** guests can delete their own uploads, but not anyone else's. The couple can hide or delete any photo from the admin page.
+- **Table card:** the admin page makes a printable QR card that matches the album cover
 - **Save to phone:** opens the share sheet on mobile, downloads on desktop
 - **Music:** starts on the first tap. It shuffles the songs in `music/`, jumps straight to the chorus, mixes between songs with DJ transitions and repeats forever (Web Audio API). It also turns down during the countdown.
 
@@ -22,7 +25,9 @@ No app download, no login. Total cost: RM0.
 
 ```
 index.html           page structure (all screens)
-admin.html           admin page: add/remove songs + frames (js/admin.js)
+admin.html           admin page: songs, frames, wedding details (js/admin.js),
+                     photos & wishes, QR table card (js/admin-album.js)
+slideshow.html       live slideshow for a TV / projector (js/slideshow.js)
 css/style.css        design
 js/config.js         ⭐ SETTINGS: names, date, frames, filters, layouts
 js/app.js            booth logic, canvas drawing, upload, gallery
@@ -125,7 +130,7 @@ Keep the mp3s small, since guests stream them on mobile data. 128 kbps is plenty
 
 1. Create a folder in Google Drive, for example "Wedding Snap Album". Copy its ID (the long code after `/folders/` in the URL).
 2. Go to <https://script.google.com>, create a **New project** and paste in `apps-script/Code.gs`.
-3. Set `FOLDER_ID` at the top.
+3. Set `FOLDER_ID` at the top, and `ADMIN_KEY` to a long secret phrase only the couple knows. It unlocks **Photos & wishes** on the admin page. Only put it in the Apps Script editor, never in this repo (it's public).
 4. Choose `testSetup` and click **Run**, then allow access when asked.
 5. Go to **Deploy → New deployment**.
    - Type: **Web app**
@@ -135,7 +140,14 @@ Keep the mp3s small, since guests stream them on mobile data. 128 kbps is plenty
 
 > If gallery thumbnails don't show, open the Drive folder, go to **Share → General access → Anyone with the link → Viewer**.
 
-> After changing `Code.gs`, go to **Deploy → Manage deployments → Edit → Version: New version**. If you skip this, the old code keeps running.
+> After changing `Code.gs`, go to **Deploy → Manage deployments → Edit → Version: New version**. If you skip this, the old code keeps running. The URL stays the same, so `SCRIPT_URL` doesn't change.
+
+## On the day
+
+- **Table cards:** admin page → **Table card** → **Print (4 per A4)**, then cut along the gaps. Scan the preview with your phone first to check the link.
+- **Slideshow:** open `https://<username>.github.io/<repo>/slideshow.html` on a laptop connected to the TV or projector and click once for full screen. New photos show up within a few seconds, marked "Just taken". Turn off the laptop's sleep timer.
+- **Unsuitable photo?** Admin page → **Photos & wishes** → **Hide**. It disappears from the gallery and the slideshow but stays in your Drive. **Delete** moves it to the Drive bin.
+- **Wishes:** read them all under **Photos & wishes → Wishes**, or **Download wishes** for a spreadsheet (they're also in each photo's description in Drive).
 
 ## 4. Host on GitHub Pages
 

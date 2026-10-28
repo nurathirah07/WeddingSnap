@@ -1,29 +1,54 @@
 // =========================================================
 //  Wedding Snap - Google Apps Script backend
-//  Paste this into script.google.com, set FOLDER_ID, then
-//  Deploy → New deployment → Web app (see README.md).
+//  Paste this into script.google.com, set FOLDER_ID and ADMIN_KEY,
+//  then Deploy → Manage deployments → Edit → New version (see README.md).
 // =========================================================
 
 // The Google Drive folder ID (the long part of the folder's URL)
 const FOLDER_ID = "PASTE_YOUR_FOLDER_ID_HERE";
 
-const MAX_BYTES = 8 * 1024 * 1024;   // refuse anything bigger than 8 MB
-const CACHE_KEY = "photo-list";
+// The couple's secret for the admin page (hide / delete any photo, read
+// all wishes). Pick something long that guests can't guess. Keep it here
+// in the Apps Script editor only - never put it on GitHub.
+const ADMIN_KEY = "CHANGE_ME";
 
-// GET ?action=list  → { ok, photos: [{ id, time }] }  newest first
+const MAX_BYTES = 8 * 1024 * 1024;   // refuse anything bigger than 8 MB
+const MAX_WISH = 300;                // characters
+const MAX_NAME = 40;
+const CACHE_KEY = "photo-list-v2";
+
+// Saved in Script Properties:
+//   del_<photoId>  = hash of the uploader's token (lets them delete it)
+//   up_<hash>      = photoId (so a retried upload isn't saved twice)
+//   wish_<photoId> = { n: name, w: wish }
+//   hide_<photoId> = "1" when the couple hid it
+
+// GET ?action=list  → { ok, photos: [{ id, time, wish?, name? }] }  newest first
 function doGet(e) {
   // e is missing when you press Run on doGet in the editor - just list photos then
   const action = (e && e.parameter && e.parameter.action) || "list";
-  if (action === "list") return json(listPhotos());
+  if (action === "list") return json(listPhotos(false));
   return json({ ok: false, error: "Unknown action" });
 }
 
-// POST { action: "upload", image, token } or { action: "delete", id, token }
+// POST (JSON body):
+//   { action: "upload", image, token, wish?, name? }
+//   { action: "delete", id, token }                   - a guest deletes their own
+//   { action: "adminList", key }                      - every photo, hidden ones too
+//   { action: "adminHide", key, id, hidden }
+//   { action: "adminDelete", key, id }
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     if (body.action === "upload") return json(upload(body));
     if (body.action === "delete") return json(remove(body));
+    if (/^admin/.test(body.action)) {
+      const problem = checkAdmin(body.key);
+      if (problem) return json({ ok: false, error: problem });
+      if (body.action === "adminList") return json(listPhotos(true));
+      if (body.action === "adminHide") return json(setHidden(body.id, !!body.hidden));
+      if (body.action === "adminDelete") return json(trash(body.id));
+    }
     return json({ ok: false, error: "Unknown action" });
   } catch (err) {
     return json({ ok: false, error: String(err.message || err) });
@@ -34,6 +59,13 @@ function upload(body) {
   const match = /^data:image\/jpeg;base64,(.+)$/.exec(body.image || "");
   if (!match) return { ok: false, error: "Not a JPEG image" };
   if (!/^[a-f0-9]{32}$/.test(body.token || "")) return { ok: false, error: "Bad token" };
+
+  // The phone retries until it hears back. If the photo arrived but the
+  // answer got lost (bad signal), don't save it a second time.
+  const props = PropertiesService.getScriptProperties();
+  const tokenHash = hash(body.token);
+  const already = props.getProperty("up_" + tokenHash);
+  if (already) return { ok: true, id: already };
 
   const bytes = Utilities.base64Decode(match[1]);
   if (bytes.length > MAX_BYTES) return { ok: false, error: "Image too large" };
@@ -49,8 +81,19 @@ function upload(body) {
     // Some school/work accounts block this - share the folder manually instead
   }
 
-  // Remember a hash of the delete token (never the token itself)
-  PropertiesService.getScriptProperties().setProperty("del_" + file.getId(), hash(body.token));
+  const saved = {
+    ["del_" + file.getId()]: tokenHash,   // a hash of the delete token (never the token itself)
+    ["up_" + tokenHash]: file.getId(),
+  };
+  // The guest's wish (ucapan) for the couple, if they wrote one
+  const wish = clean(body.wish, MAX_WISH);
+  const from = clean(body.name, MAX_NAME);
+  if (wish || from) {
+    saved["wish_" + file.getId()] = JSON.stringify({ n: from, w: wish });
+    // also on the file in Drive, so the couple can see it there too
+    try { file.setDescription((wish ? wish : "") + (from ? " - " + from : "")); } catch (err) {}
+  }
+  props.setProperties(saved);
   CacheService.getScriptCache().remove(CACHE_KEY);
   return { ok: true, id: file.getId() };
 }
@@ -58,19 +101,53 @@ function upload(body) {
 // Only the phone that uploaded a photo knows its token, so only it can delete
 function remove(body) {
   const props = PropertiesService.getScriptProperties();
-  const key = "del_" + body.id;
-  const saved = props.getProperty(key);
+  const saved = props.getProperty("del_" + body.id);
   if (!saved || !body.token || saved !== hash(body.token)) {
     return { ok: false, error: "You can only delete your own photos" };
   }
-  DriveApp.getFileById(body.id).setTrashed(true);
-  props.deleteProperty(key);
+  return trash(body.id);
+}
+
+function trash(id) {
+  DriveApp.getFileById(id).setTrashed(true);
+  const props = PropertiesService.getScriptProperties();
+  ["del_", "wish_", "hide_"].forEach((p) => props.deleteProperty(p + id));
   CacheService.getScriptCache().remove(CACHE_KEY);
   return { ok: true };
 }
 
-function listPhotos() {
-  // Many guests open the gallery at once, so cache the list for 30s
+function setHidden(id, hidden) {
+  const props = PropertiesService.getScriptProperties();
+  if (hidden) props.setProperty("hide_" + id, "1");
+  else props.deleteProperty("hide_" + id);
+  return { ok: true };
+}
+
+// The photo list for the gallery and slideshow. Hidden photos are left
+// out, except for the couple (admin), who also sees which ones are hidden.
+function listPhotos(isAdmin) {
+  const props = PropertiesService.getScriptProperties().getProperties();
+  const photos = [];
+  driveList().forEach((p) => {
+    const hidden = !!props["hide_" + p.id];
+    if (hidden && !isAdmin) return;
+    const photo = { id: p.id, time: p.time };
+    const meta = props["wish_" + p.id];
+    if (meta) {
+      try {
+        const m = JSON.parse(meta);
+        if (m.w) photo.wish = m.w;
+        if (m.n) photo.name = m.n;
+      } catch (err) {}
+    }
+    if (isAdmin && hidden) photo.hidden = true;
+    photos.push(photo);
+  });
+  return { ok: true, photos: photos };
+}
+
+function driveList() {
+  // Many guests (and the slideshow) ask at once, so cache the list for 30s
   const cache = CacheService.getScriptCache();
   const cached = cache.get(CACHE_KEY);
   if (cached) return JSON.parse(cached);
@@ -82,10 +159,20 @@ function listPhotos() {
     photos.push({ id: f.getId(), time: f.getDateCreated().getTime() });
   }
   photos.sort((a, b) => b.time - a.time);
+  const list = photos.slice(0, 500);
+  try { cache.put(CACHE_KEY, JSON.stringify(list), 30); } catch (err) {}   // >100KB can't be cached
+  return list;
+}
 
-  const result = { ok: true, photos: photos.slice(0, 500) };
-  try { cache.put(CACHE_KEY, JSON.stringify(result), 30); } catch (err) {}   // >100KB can't be cached
-  return result;
+function checkAdmin(key) {
+  if (!ADMIN_KEY || ADMIN_KEY === "CHANGE_ME") return "Set ADMIN_KEY in the Apps Script first (see README)";
+  if (key !== ADMIN_KEY) return "Wrong admin key";
+  return "";
+}
+
+// Plain text only, trimmed and shortened
+function clean(text, max) {
+  return String(text || "").replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, max);
 }
 
 function hash(text) {
@@ -102,4 +189,5 @@ function json(obj) {
 // Run this once from the editor to grant Drive permission + test the folder
 function testSetup() {
   Logger.log("Folder: " + DriveApp.getFolderById(FOLDER_ID).getName());
+  Logger.log(checkAdmin(ADMIN_KEY) || "Admin key is set");
 }

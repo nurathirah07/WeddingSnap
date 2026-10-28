@@ -1,5 +1,6 @@
 .env
 vendor/
+!js/vendor/
 node_modules/
 *.log
 css/background.gif
