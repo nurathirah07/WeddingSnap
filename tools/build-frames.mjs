@@ -60,7 +60,10 @@ for (const file of files) {
 
   const scale = Math.min(1, MAX_SIZE / Math.max(png.width, png.height));
   const s = (v) => Math.round(v * scale);
-  const slots = found.slots.map((w) => ({ x: s(w.x), y: s(w.y), w: s(w.w), h: s(w.h), r: s(w.r) }));
+  const slots = found.slots.map((w) => ({
+    x: s(w.x), y: s(w.y), w: s(w.w), h: s(w.h), r: s(w.r),
+    ...(w.angle ? { angle: w.angle } : {}),   // tilted window (degrees, clockwise)
+  }));
   const id = frameId(file);
 
   const frame = {

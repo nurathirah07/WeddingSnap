@@ -493,6 +493,7 @@ function buildLayoutCards() {
       box.style.top    = (s.y / l.height * 100) + "%";
       box.style.width  = (s.w / l.width  * 100) + "%";
       box.style.height = (s.h / l.height * 100) + "%";
+      if (s.angle) box.style.transform = `rotate(${s.angle}deg)`;
       mini.appendChild(box);
     });
 
@@ -828,10 +829,21 @@ function compose(canvas, fr = frame(), f = filter()) {
   drawFooter(ctx, g, fr);
 }
 
+// Tilted windows (Polaroids on a collage...): turn the canvas around the
+// window's centre, then draw as if it were straight
+function tilt(ctx, slot) {
+  if (!slot.angle) return;
+  const cx = slot.x + slot.w / 2, cy = slot.y + slot.h / 2;
+  ctx.translate(cx, cy);
+  ctx.rotate((slot.angle * Math.PI) / 180);
+  ctx.translate(-cx, -cy);
+}
+
 function drawPhotos(ctx, g, f) {
   g.slots.forEach((slot, i) => {
     const shot = state.shots[i];
     ctx.save();
+    tilt(ctx, slot);
     roundRect(ctx, slot.x, slot.y, slot.w, slot.h, slot.r || 0);
     ctx.clip();
     if (shot) {
@@ -956,7 +968,13 @@ preview.addEventListener("click", (e) => {
   const rect = preview.getBoundingClientRect();
   const x = (e.clientX - rect.left) * preview.width / rect.width;
   const y = (e.clientY - rect.top) * preview.height / rect.height;
-  const i = geometry().slots.findIndex((s) => x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h);
+  const i = geometry().slots.findIndex((s) => {
+    // tilted window: turn the tap back the other way around its centre
+    const a = (-(s.angle || 0) * Math.PI) / 180, cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+    const tx = cx + (x - cx) * Math.cos(a) - (y - cy) * Math.sin(a);
+    const ty = cy + (x - cx) * Math.sin(a) + (y - cy) * Math.cos(a);
+    return tx >= s.x && tx <= s.x + s.w && ty >= s.y && ty <= s.y + s.h;
+  });
   if (i === -1) return;
   state.current = i;
   state.retakeOne = true;

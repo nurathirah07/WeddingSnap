@@ -476,6 +476,13 @@ function drawFrameThumb(canvas, frame, geo) {
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     if (!geo) return;
     geo.slots.forEach((s, i) => {
+      ctx.save();
+      if (s.angle) {   // tilted window: turn around its centre
+        const cx = (s.x + s.w / 2) * scale, cy = (s.y + s.h / 2) * scale;
+        ctx.translate(cx, cy);
+        ctx.rotate((s.angle * Math.PI) / 180);
+        ctx.translate(-cx, -cy);
+      }
       ctx.fillStyle = "rgba(201,123,132,0.55)";
       ctx.strokeStyle = "#a85f69";
       ctx.lineWidth = 2;
@@ -486,6 +493,7 @@ function drawFrameThumb(canvas, frame, geo) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(i + 1, (s.x + s.w / 2) * scale, (s.y + s.h / 2) * scale);
+      ctx.restore();
     });
   };
   // live site first; if it isn't deployed yet, GitHub's copy
