@@ -250,19 +250,26 @@ body:not(.detailsReady) .detail { opacity: 0; }
 .home-inner .btn.big { max-width: 340px; }
 .home-inner .btn.ghost { min-width: 170px; }
 
-/* Record + sleeve. The record (css/vinyl.webp, cut from "cd spinning.gif")
-   peeks out of its sleeve; when music plays it slides further out and spins.
-   Song covers come from --cover (app.js). */
+/* Record + album cover. The record (css/vinyl.webp) peeks out of its
+   cover; when music plays the cover slides aside, the record glides out,
+   spins up like a turntable and glows with the beat (app.js turns the
+   record and sets --beat). Everything is sized from --sl (the cover's
+   size), so it fits any phone. Song covers come from --cover (app.js). */
 .cdPlayer {
+  --sl: clamp(156px, 50vw, 200px);
+  --beat: 0;
+  --glide: cubic-bezier(0.22, 1, 0.36, 1);
   position: relative;
-  width: 322px; height: 204px;
-  margin: 26px 0 6px;
+  width: calc(var(--sl) * 1.5);
+  height: var(--sl);
+  margin: 30px 0 12px;
   padding: 0;
   border: none;
   background: none;
-  transform: translateX(-28px);   /* sleeve + record look centred together */
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
-@media (max-width: 370px) { .cdPlayer { transform: translateX(-28px) scale(0.86); margin: 12px 0 -14px; } }
+.cdPlayer:focus-visible .sleeve { outline: 2px solid rgba(194, 124, 136, 0.55); outline-offset: 5px; }
 
 /* Album cover: soft pink / lilac / blue colours drifting slowly behind
    the couple's initials in script and the date (like an album cover video).
@@ -271,22 +278,29 @@ body:not(.detailsReady) .detail { opacity: 0; }
   position: absolute;
   left: 0; top: 0;
   z-index: 2;
-  width: 204px; height: 204px;
-  border-radius: 8px;
+  width: var(--sl); height: var(--sl);
+  border-radius: 12px;
   background: var(--cover, none) center / cover, #c6a6d6;
-  box-shadow: 0 22px 44px -10px rgba(74, 40, 70, 0.4), 0 2px 6px rgba(74, 40, 70, 0.12);
+  box-shadow:
+    0 28px 50px -22px rgba(96, 52, 96, 0.5),
+    0 8px 18px -8px rgba(96, 52, 96, 0.22);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
   overflow: hidden;
   isolation: isolate;
+  translate: calc(var(--sl) * 0.17) 0;   /* centred with the record tucked in */
+  transition: translate 1.1s var(--glide), scale 0.4s var(--glide);
 }
+body.musicOn .sleeve { translate: 0 0; }
+.cdPlayer:active .sleeve { scale: 0.985; }
+
 .sleeveArt {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(140deg, #ef9cc4, #c3a8da 48%, #8fa3dc);
+  background: linear-gradient(140deg, #f2a9cb, #c9b0de 48%, #9aaee0);
 }
 /* two layers of colour clouds, turning in opposite directions = the drift */
 .sleeveArt::before,
@@ -298,18 +312,18 @@ body:not(.detailsReady) .detail { opacity: 0; }
 }
 .sleeveArt::before {
   background:
-    radial-gradient(circle at 32% 30%, #ea5f9f 0, rgba(234, 95, 159, 0) 22%),
-    radial-gradient(circle at 70% 38%, #8c9fdc 0, rgba(140, 159, 220, 0) 24%),
-    radial-gradient(circle at 38% 72%, #f6bdd6 0, rgba(246, 189, 214, 0) 22%),
-    radial-gradient(circle at 72% 70%, #a679bd 0, rgba(166, 121, 189, 0) 22%);
+    radial-gradient(circle at 32% 30%, #ee77ad 0, rgba(238, 119, 173, 0) 22%),
+    radial-gradient(circle at 70% 38%, #98aae2 0, rgba(152, 170, 226, 0) 24%),
+    radial-gradient(circle at 38% 72%, #f8c6dc 0, rgba(248, 198, 220, 0) 22%),
+    radial-gradient(circle at 72% 70%, #b48ac8 0, rgba(180, 138, 200, 0) 22%);
   animation: drift 16s ease-in-out infinite alternate;
 }
 .sleeveArt::after {
   background:
-    radial-gradient(circle at 60% 25%, #f3a9cc 0, rgba(243, 169, 204, 0) 20%),
-    radial-gradient(circle at 28% 55%, #9fb0e4 0, rgba(159, 176, 228, 0) 20%),
-    radial-gradient(circle at 66% 66%, #e9619f 0, rgba(233, 97, 159, 0) 18%);
-  opacity: 0.85;
+    radial-gradient(circle at 60% 25%, #f6b6d3 0, rgba(246, 182, 211, 0) 20%),
+    radial-gradient(circle at 28% 55%, #a9b9e8 0, rgba(169, 185, 232, 0) 20%),
+    radial-gradient(circle at 66% 66%, #ec72aa 0, rgba(236, 114, 170, 0) 18%);
+  opacity: 0.8;
   animation: drift2 21s ease-in-out infinite alternate;
 }
 @keyframes drift {
@@ -328,67 +342,106 @@ body:not(.detailsReady) .detail { opacity: 0; }
   position: absolute;
   inset: 0;
   z-index: -1;
-  opacity: 0.22;
+  opacity: 0.2;
   mix-blend-mode: overlay;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-/* light catching the left edge, like a real CD case */
+/* soft gloss: light on the spine and across the top corner, thin bright rim */
 .sleeve::after {
   content: "";
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 12px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.3), transparent);
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 7%),
+    linear-gradient(128deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 36%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
 }
 .sleeve .cdMono {
   font-family: "Pinyon Script", var(--serif);
   font-weight: 400;
-  font-size: 54px;
+  font-size: calc(var(--sl) * 0.27);
   line-height: 1;
   white-space: nowrap;
-  margin-top: -6px;
-  text-shadow: 0 1px 1px rgba(90, 50, 90, 0.35), 0 0 16px rgba(255, 255, 255, 0.25);
+  margin-top: calc(var(--sl) * -0.03);
+  text-shadow: 0 1px 1px rgba(96, 52, 96, 0.3), 0 0 18px rgba(255, 255, 255, 0.3);
 }
 .cdMono i { font-family: var(--serif); font-style: italic; font-weight: 500; font-size: 0.6em; margin: 0 0.3em; }
 .sleeve small {
   position: absolute;
-  left: 0; right: 0; bottom: 16px;
-  font-size: 11.5px;
+  left: 0; right: 0; bottom: calc(var(--sl) * 0.085);
+  font-size: calc(var(--sl) * 0.056);
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-align: center;
-  text-shadow: 0 1px 2px rgba(90, 50, 90, 0.25);
+  text-shadow: 0 1px 2px rgba(96, 52, 96, 0.25);
 }
 body.hasCover .sleeve > * { display: none; }
 
+/* The record: slides (.disc), spins (.cd, turned by app.js), glows (.discGlow) */
+.disc {
+  position: absolute;
+  left: calc(var(--sl) * 0.04); top: calc(var(--sl) * 0.04);
+  z-index: 1;
+  width: calc(var(--sl) * 0.92); height: calc(var(--sl) * 0.92);
+  translate: calc(var(--sl) * 0.37) 0;
+  transition: translate 1.1s var(--glide);
+}
+body.musicOn .disc { translate: calc(var(--sl) * 0.54) 0; }
+
+/* soft pink-lilac halo that breathes with the bass */
+.discGlow {
+  position: absolute;
+  inset: -24%;
+  border-radius: 50%;
+  /* the record covers the middle, so the colour sits around its edge */
+  background: radial-gradient(closest-side,
+    rgba(242, 132, 186, 0.75) 62%, rgba(176, 154, 232, 0.4) 80%, rgba(176, 154, 232, 0));
+  filter: blur(6px);
+  opacity: var(--beat);
+  transform: scale(calc(0.86 + var(--beat) * 0.18));
+}
 .cd {
   position: absolute;
-  left: 6px; top: 6px;
-  z-index: 1;
-  width: 192px; height: 192px;
+  inset: 0;
   border-radius: 50%;
   background: url("vinyl.webp") center / cover;
-  box-shadow: 0 12px 30px rgba(42, 31, 34, 0.35);
-  translate: 58px 0;
-  transition: translate 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
-  animation: spin 3.2s linear infinite paused;
+  box-shadow: 0 16px 30px -10px rgba(42, 31, 34, 0.55);
+  scale: calc(1 + var(--beat) * 0.025);
 }
-body.musicOn .cd { translate: 124px 0; animation-play-state: running; }
-.cdPlayer:active .cd { scale: 0.98; }
-
-/* the pink centre label, or the song's cover when it has one */
+/* centre label in the cover's colours (or the song's cover when it has one) */
 .cdLabel {
   position: absolute;
-  inset: 33.5%;
+  inset: 32%;
   border-radius: 50%;
-  background: var(--cover, none) center / cover;
+  background:
+    var(--cover, none) center / cover,
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(140deg, #f2a9cb, #c9b0de 55%, #9aaee0);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 2px rgba(0, 0, 0, 0.35);
 }
-body.hasCover .cdLabel::after {   /* spindle hole on top of the cover */
+.cdLabel::after {   /* spindle hole */
   content: "";
   position: absolute;
   inset: 44%;
   border-radius: 50%;
   background: #f4efe9;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+/* light reflecting off the vinyl. It stays still while the record turns
+   underneath, which is what makes the spin easy to see */
+.discShine {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(from 20deg,
+    rgba(255, 255, 255, 0) 0deg, rgba(255, 255, 255, 0.16) 28deg, rgba(255, 255, 255, 0) 64deg,
+    rgba(255, 255, 255, 0) 200deg, rgba(255, 255, 255, 0.1) 226deg, rgba(255, 255, 255, 0) 262deg);
+  mix-blend-mode: screen;
+  scale: calc(1 + var(--beat) * 0.025);
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -443,7 +496,7 @@ body.musicOn #npState::before {
 body.musicOn .wave { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cd, .miniCd, .sleeveArt::before, .sleeveArt::after { animation: none; }
+  .miniCd, .sleeveArt::before, .sleeveArt::after { animation: none; }
 }
 
 /* ---------- 2. Layout ---------- */

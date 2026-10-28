@@ -356,13 +356,32 @@ const Wave = (() => {
 
   const visible = () => $("home").classList.contains("active") && !document.hidden && !still.matches;
 
+  // The record turns like a turntable: spins up when the music starts and
+  // slows to a stop when it ends, and glows / swells a little on the bass
+  const player = $("cdPlayer"), record = $("cd");
+  const RPM = 360 / 3.2;   // degrees per second at full speed
+  let angle = 0, speed = 0, beat = 0, last = 0;
+
+  function turn(t, on) {
+    const dt = last ? Math.min(0.1, (t - last) / 1000) : 0.016;
+    last = t;
+    speed += ((on ? RPM : 0) - speed) * (1 - Math.exp(-dt * (on ? 2.2 : 1.4)));
+    angle = (angle + speed * dt) % 360;
+    record.style.rotate = angle.toFixed(2) + "deg";
+    const bass = Math.min(1, (bands[0] + bands[1] + bands[2]) / 3);
+    const target = on ? 0.35 + 0.65 * bass : 0;
+    beat += (target - beat) * (target > beat ? 0.5 : 0.1);
+    player.style.setProperty("--beat", beat.toFixed(3));
+    return speed > 0.5 || beat > 0.005;
+  }
+
   function draw(t) {
     frame = 0;
     if (!size()) return;
     const on = document.body.classList.contains("musicOn");
     if (!on) bands.fill(0);
     else if (!Sound.levels(bands)) madeUp(t);
-    let moving = on;
+    let moving = turn(t, on);
     for (let i = 0; i < HALF; i++) {
       // jump up with the beat, fall back slowly
       shown[i] += (bands[i] - shown[i]) * (bands[i] > shown[i] ? 0.55 : 0.12);
@@ -370,6 +389,7 @@ const Wave = (() => {
     }
     paint();
     if (moving && visible()) frame = requestAnimationFrame(draw);
+    else last = 0;
   }
 
   // Called whenever something that matters changes (music on/off, screen)

@@ -55,10 +55,12 @@
       <h1 class="display detail" id="homeTitle"></h1>
       <p class="couple detail" id="homeCouple"></p>
 
-      <!-- CD sliding out of its sleeve; spins while the music plays. Tap = play / pause -->
+      <!-- Record sliding out of its album cover; spins and glows while the music plays. Tap = play / pause -->
       <button class="cdPlayer" id="cdPlayer" aria-label="Play or pause music">
-        <span class="cd" aria-hidden="true">
-          <span class="cdLabel"></span>
+        <span class="disc" aria-hidden="true">
+          <span class="discGlow"></span>
+          <span class="cd" id="cd"><span class="cdLabel"></span></span>
+          <span class="discShine"></span>
         </span>
         <span class="sleeve" aria-hidden="true">
           <span class="sleeveArt"></span>
