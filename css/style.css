@@ -379,6 +379,17 @@ body.musicOn #npState::before {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* Waveform that moves with the music (drawn by Wave in app.js) */
+.wave {
+  display: block;
+  width: 220px;
+  height: 30px;
+  margin-top: 8px;
+  color: var(--accent);
+  opacity: 0.55;
+  transition: opacity 0.6s;
+}
+body.musicOn .wave { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .cd, .miniCd { animation: none; }

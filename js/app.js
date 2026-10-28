@@ -160,6 +160,7 @@ function show(screenId) {
 function keepAlive() {
   if (document.hidden) return;
   Sound.resume();
+  Wave.start();
   const bg = document.querySelector(".bgVideo");
   if (bg && bg.paused && current !== "booth") bg.play().catch(() => {});
 }
@@ -286,6 +287,90 @@ function showDetails() {
 $("homeStart").addEventListener("click", () => show("layout"));
 $("homeGallery").addEventListener("click", () => show("gallery"));
 
+// =========================================================
+//  Waveform under the record: bars that move with the music.
+//  Bass in the middle, treble towards the edges, mirrored.
+//  Only drawn while it's on screen (saves battery).
+// =========================================================
+const Wave = (() => {
+  const canvas = $("wave");
+  const ctx = canvas.getContext("2d");
+  const HALF = 16;                          // bars each side of the middle
+  const bands = new Float32Array(HALF);     // loudness now
+  const shown = new Float32Array(HALF);     // what's drawn: eases towards `bands`
+  const still = matchMedia("(prefers-reduced-motion: reduce)");
+  let frame = 0;
+  let color = "#c27c88";
+
+  function size() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w) return false;   // not on screen
+    if (canvas.width !== Math.round(w * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      color = getComputedStyle(canvas).color;
+    }
+    return true;
+  }
+
+  // Songs on file:// pages can't be measured, so they get a gentle
+  // made-up motion instead
+  function madeUp(t) {
+    for (let i = 0; i < HALF; i++) {
+      const v = 0.35 + 0.22 * Math.sin(t / 260 + i * 0.9) + 0.14 * Math.sin(t / 170 - i * 1.7);
+      bands[i] = Math.max(0, v * (1 - (i / HALF) * 0.5));
+    }
+  }
+
+  function paint() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const n = HALF * 2, gap = w / n, bar = Math.max(2, gap * 0.42);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = color;
+    for (let k = 0; k < n; k++) {
+      const i = k < HALF ? HALF - 1 - k : k - HALF;     // mirrored: bass in the middle
+      const bh = Math.max(bar, Math.min(1, shown[i]) * h);   // never smaller than a dot
+      ctx.globalAlpha = 0.4 + 0.6 * (1 - Math.abs(k - (n - 1) / 2) / (n / 2));   // softer at the edges
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(gap * k + (gap - bar) / 2, (h - bh) / 2, bar, bh, bar / 2);
+      else ctx.rect(gap * k + (gap - bar) / 2, (h - bh) / 2, bar, bh);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  const visible = () => $("home").classList.contains("active") && !document.hidden && !still.matches;
+
+  function draw(t) {
+    frame = 0;
+    if (!size()) return;
+    const on = document.body.classList.contains("musicOn");
+    if (!on) bands.fill(0);
+    else if (!Sound.levels(bands)) madeUp(t);
+    let moving = on;
+    for (let i = 0; i < HALF; i++) {
+      // jump up with the beat, fall back slowly
+      shown[i] += (bands[i] - shown[i]) * (bands[i] > shown[i] ? 0.55 : 0.12);
+      if (shown[i] > 0.003) moving = true;
+    }
+    paint();
+    if (moving && visible()) frame = requestAnimationFrame(draw);
+  }
+
+  // Called whenever something that matters changes (music on/off, screen)
+  function start() {
+    if (frame) return;
+    if (visible()) frame = requestAnimationFrame(draw);
+    else if (size()) paint();   // reduced motion: still bars
+  }
+
+  window.addEventListener("resize", () => { canvas.width = 0; start(); });
+  start();
+  return { start };
+})();
+
 // Music starts every time the app is opened, on the guest's first tap
 // anywhere. (Browsers don't allow sound before the user touches the page,
 // so this is the earliest possible.) Stopping it only lasts for this visit.
@@ -318,6 +403,7 @@ function setMusicUI(on) {
   document.body.classList.toggle("musicOn", on);
   $("npState").textContent = on ? "Now playing" : "Tap the record for music";
   if (!on) $("npTitle").innerHTML = "&nbsp;";
+  Wave.start();
 }
 
 function toggleMusic() {

@@ -39,6 +39,7 @@ const Sound = (() => {
   let ac = null;          // AudioContext
   let musicGain = null;   // master volume for the music (fade in/out, ducking)
   let fxGain = null;      // volume for beeps/shutter
+  let analyser = null;    // for the waveform
   let playing = false;
   let generation = 0;     // bumps on stop, so old timers know to give up
 
@@ -56,9 +57,15 @@ const Sound = (() => {
       limiter.attack.value = 0.003;
       limiter.release.value = 0.25;
       limiter.connect(ac.destination);
+      // Measures the music for the moving waveform on the home screen
+      analyser = ac.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.75;
+      analyser.minDecibels = -85;
+      analyser.maxDecibels = -20;
       musicGain = ac.createGain();
       musicGain.gain.value = 0;
-      musicGain.connect(limiter);
+      musicGain.connect(analyser).connect(limiter);
       fxGain = ac.createGain();
       fxGain.gain.value = 0.5;
       fxGain.connect(ac.destination);
@@ -699,6 +706,27 @@ const Sound = (() => {
     });
   }
 
+  // For the waveform: fills `out` with how loud each band of the music is
+  // right now (0 = silent, ~1 = loud), bass first. Returns false when it
+  // can't be measured: songs on file:// pages play outside Web Audio.
+  let freqData = null;
+  function levels(out) {
+    if (!analyser || !playing || (LOCAL && M.SONGS.length)) return false;
+    if (!freqData) freqData = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(freqData);
+    const n = out.length;
+    const hz = ac.sampleRate / analyser.fftSize;   // width of one frequency bin
+    for (let i = 0; i < n; i++) {
+      // Bands spaced the way we hear: 60 Hz (bass) up to 12 kHz
+      const lo = Math.max(1, Math.floor(60 * Math.pow(200, i / n) / hz));
+      const hi = Math.max(lo + 1, Math.floor(60 * Math.pow(200, (i + 1) / n) / hz));
+      let peak = 0;
+      for (let b = lo; b < hi && b < freqData.length; b++) peak = Math.max(peak, freqData[b]);
+      out[i] = Math.pow(peak / 255, 1.6) * (1 + (i / n) * 0.6);   // highs are naturally quieter
+    }
+    return true;
+  }
+
   // True when the browser lets this page play sound before any tap.
   // Some computers allow it; phones never do.
   function canAutoplay() {
@@ -708,7 +736,7 @@ const Sound = (() => {
   }
 
   return {
-    unlock, resume, beep, shutter, duck, canAutoplay, preload,
+    unlock, resume, beep, shutter, duck, canAutoplay, preload, levels,
     get playing() { return playing; },
     toggle() { playing ? stopMusic() : startMusic(); return playing; },
   };
