@@ -797,8 +797,7 @@ function compose(canvas, f = filter()) {
   canvas.width = g.width;
   canvas.height = g.height;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = c.bg;
-  ctx.fillRect(0, 0, g.width, g.height);
+  Effects.paper(ctx, g.width, g.height, c);   // plain, gradient or pattern
   drawPhotos(ctx, g, f);
   Effects.apply(ctx, g, state.effectId, c, state.layoutId);
   drawFooter(ctx, g, c);
@@ -842,6 +841,19 @@ function drawFooter(ctx, g, c) {
   let y = bottom + (space - total()) / 2;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+
+  // Patterned paper: a soft label behind the text so it stays easy to read
+  if (c.pattern) {
+    const pad = unit * 0.35;
+    ctx.save();
+    ctx.fillStyle = c.bg;
+    ctx.globalAlpha = 0.92;
+    ctx.shadowColor = "rgba(0,0,0,0.08)";
+    ctx.shadowBlur = pad;
+    roundRect(ctx, g.width * 0.06, y - pad, g.width * 0.88, total() + pad * 2, pad * 1.2);
+    ctx.fill();
+    ctx.restore();
+  }
 
   ctx.fillStyle = c.text;
   fitText(ctx, CONFIG.TITLE, cx, y + title * 0.6, maxW, Math.round(title), '400 {size} "Runiga", Georgia, serif');
@@ -895,8 +907,9 @@ function buildColourChips() {
     const chip = document.createElement("button");
     chip.className = "swatch colour" + (c.id === state.colourId ? " selected" : "");
     chip.setAttribute("aria-label", c.name);
-    const dot = document.createElement("span");
-    dot.style.background = c.bg;
+    const dot = document.createElement("canvas");   // the real paper: gradient / pattern too
+    dot.width = dot.height = 88;
+    Effects.paper(dot.getContext("2d"), 88, 88, c);
     chip.appendChild(dot);
     chip.insertAdjacentHTML("beforeend", `<small>${c.name}</small>`);
     chip.addEventListener("click", () => {
@@ -920,8 +933,7 @@ function buildEffectChips() {
     const thumb = document.createElement("canvas");
     thumb.width = thumb.height = 120;
     const ctx = thumb.getContext("2d");
-    ctx.fillStyle = c.bg;
-    ctx.fillRect(0, 0, 120, 120);
+    Effects.paper(ctx, 120, 120, c);
     const g = { width: 120, height: 120, slots: [{ x: 22, y: 18, w: 76, h: 64 }] };
     if (state.shots[0]) drawCover(ctx, state.shots[0], 22, 18, 76, 64);
     Effects.apply(ctx, g, ef.id, c, "thumb", 13);

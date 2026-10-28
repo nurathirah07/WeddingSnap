@@ -89,6 +89,8 @@ const LAYOUTS = {
 //  wedding details underneath); guests pick its colour, an effect
 //  (js/effects.js) and a filter.
 //  bg = paper, text = title, sub = names + date
+//  Optional: bg2 / bg3 = gradient colours (with a fine film grain),
+//            pattern = "gingham" | "dots" | "checker" drawn in `pat`
 // ---------------------------------------------------------
 const COLOURS = [
   { id: "white",     name: "White",      bg: "#ffffff", text: "#1f1a1c", sub: "#7a6f73" },
@@ -103,6 +105,27 @@ const COLOURS = [
   { id: "emerald",   name: "Emerald",    bg: "#0f4c3a", text: "#e6c77a", sub: "#cdb88a" },
   { id: "navy",      name: "Navy",       bg: "#1d2a44", text: "#f1e3c6", sub: "#b9c2d6" },
   { id: "black",     name: "Black",      bg: "#121012", text: "#ffffff", sub: "#a39a9e" },
+  { id: "butter",    name: "Butter",     bg: "#f8eec8", text: "#6b5521", sub: "#937a45" },
+  { id: "mint",      name: "Mint",       bg: "#d6eee2", text: "#2f5a49", sub: "#5d8574" },
+  { id: "peach",     name: "Peach",      bg: "#fbdccb", text: "#8a4630", sub: "#b0705a" },
+  { id: "mauve",     name: "Mauve",      bg: "#b9909f", text: "#fff7f6", sub: "#f6e1e6" },
+  { id: "terracotta",name: "Terracotta", bg: "#c27a5c", text: "#fff6ec", sub: "#fbe2d2" },
+  { id: "mocha",     name: "Mocha",      bg: "#7d6052", text: "#fbefe4", sub: "#e3cfc1" },
+  { id: "charcoal",  name: "Charcoal",   bg: "#2c2a2f", text: "#f3ede6", sub: "#b4aca7" },
+
+  // Gradients
+  { id: "sunset",    name: "Sunset",       bg: "#fcd3b0", bg2: "#ee9fbd",              text: "#6d2e45", sub: "#94506a" },
+  { id: "candy",     name: "Cotton Candy", bg: "#f8c8de", bg2: "#bccbf6",              text: "#4b3a72", sub: "#6e5f97" },
+  { id: "aurora",    name: "Aurora",       bg: "#bfe7dd", bg2: "#cbbcf1",              text: "#33405f", sub: "#5a6787" },
+  { id: "iridescent",name: "Iridescent",   bg: "#e2f1ff", bg2: "#fbe1f6", bg3: "#fff1d3", text: "#4f4767", sub: "#7a7191" },
+  { id: "golden",    name: "Golden Hour",  bg: "#fde6a8", bg2: "#f3a17e",              text: "#6e3a1f", sub: "#93593a" },
+  { id: "midnight",  name: "Midnight",     bg: "#1d2a48", bg2: "#53305f",              text: "#f6e4c6", sub: "#cdbfd9" },
+
+  // Patterns
+  { id: "gingham",   name: "Pink Gingham", bg: "#fff1f5", pattern: "gingham", pat: "#f2a7c0", text: "#7a3550", sub: "#a35e78" },
+  { id: "ginghamBlue", name: "Blue Gingham", bg: "#f2f6fd", pattern: "gingham", pat: "#a9c0ea", text: "#2f4a74", sub: "#5b729a" },
+  { id: "polka",     name: "Polka Dot",    bg: "#fff6ef", pattern: "dots", pat: "#f3b3c1", text: "#7a3a48", sub: "#a2626f" },
+  { id: "checker",   name: "Checkerboard", bg: "#f6efff", pattern: "checker", pat: "#dccaf6", text: "#4b3a6e", sub: "#76689a" },
 ];
 // ---------------------------------------------------------
 //  Filters: film and booth looks (order of ops matters)
@@ -117,4 +140,16 @@ const FILTERS = [
   { id: "instant",    name: "Instant Film",  ops: [["sepia", 0.22], ["contrast", 0.9], ["brightness", 1.12], ["saturate", 0.85]] },
   { id: "faded",      name: "Faded 70s",     ops: [["sepia", 0.4], ["saturate", 0.7], ["contrast", 0.82], ["brightness", 1.12]] },
   { id: "golden",     name: "Golden Hour",   ops: [["sepia", 0.3], ["saturate", 1.3], ["brightness", 1.08]] },
+
+  // Modern looks
+  { id: "glow",       name: "Soft Glow",     ops: [["brightness", 1.1], ["contrast", 0.9], ["saturate", 0.92], ["fade", 0.05], ["tint", [1.03, 1.0, 1.0]]] },
+  { id: "peachy",     name: "Peachy",        ops: [["tint", [1.07, 1.0, 0.93]], ["saturate", 1.12], ["brightness", 1.05], ["fade", 0.03]] },
+  { id: "rose",       name: "Rosé",          ops: [["tint", [1.06, 0.96, 1.0]], ["saturate", 0.95], ["brightness", 1.06], ["fade", 0.04]] },
+  { id: "coolfilm",   name: "Cool Film",     ops: [["tint", [0.94, 1.0, 1.07]], ["saturate", 0.85], ["contrast", 1.06], ["fade", 0.08]] },
+  { id: "matte",      name: "Matte",         ops: [["fade", 0.12], ["contrast", 0.96], ["saturate", 0.82], ["brightness", 1.02]] },
+  { id: "y2k",        name: "Y2K Flash",     ops: [["brightness", 1.08], ["contrast", 1.22], ["saturate", 1.15], ["tint", [0.98, 1.0, 1.04]]] },
+  { id: "dreamy",     name: "Dreamy",        ops: [["saturate", 0.7], ["brightness", 1.12], ["fade", 0.1], ["tint", [1.02, 0.99, 1.05]]] },
+  { id: "goldfilm",   name: "Gold Film",     ops: [["sepia", 0.1], ["tint", [1.04, 1.0, 0.9]], ["saturate", 1.12], ["contrast", 1.06]] },
+  { id: "moody",      name: "Moody",         ops: [["brightness", 0.93], ["contrast", 1.18], ["saturate", 0.72], ["tint", [0.97, 1.0, 1.03]]] },
+  { id: "noir",       name: "Noir",          ops: [["grayscale", 1], ["contrast", 1.7], ["brightness", 0.96]] },
 ];

@@ -9,7 +9,7 @@ No app download, no login. Total cost: RM0.
 - **Layouts:** Single, Polaroid, Duo (side by side), 2-Grid, 3-Cut and 4-Cut strips, 4-Grid (2 × 2), Big & Two (1 big + 2 small) and 6-Grid (2 × 3)
 - **Booth mode:** auto-sequence with a 3 / 5 / 10 s countdown, flash, beeps and a shutter sound
 - **Filters:** live preview while shooting, and you can change them after shooting
-- **One print design for every layout:** the photos with the wedding title, names and date underneath. Guests choose the paper **colour** (12), an **effect** (sparkles, hearts, stars, confetti, petals, bokeh, light leak) and a **filter**. Effects stay off faces and off the text.
+- **One print design for every layout:** the photos with the wedding title, names and date underneath. Guests choose the paper **colour** (29: plain, soft gradients and gingham / polka dot / checkerboard patterns), an **effect** (16: sparkles, hearts, bows, pearls, washi tape, doodles, butterflies, stars, confetti, petals, glitter, bokeh, light leak, date stamp, film grain) and a **filter** (19, including Soft Glow, Peachy, Rosé, Cool Film, Matte, Y2K Flash and Dreamy). Effects stay off faces and off the text.
 - **Retakes:** tap any photo on the edit screen to retake just that one
 - **Gallery picks:** choose a photo from the phone instead of the camera
 - **Uploads:** photos go automatically to Google Drive. With a bad signal they wait on the phone and send by themselves later (never twice).
@@ -62,9 +62,9 @@ Every layout uses the same design: the photos on coloured paper, with the title,
 
 On the edit screen, guests choose:
 
-- **Colour:** 12 paper colours, from `COLOURS` in `js/config.js`. Each one sets the paper (`bg`), the title colour (`text`) and the names / date colour (`sub`). Add or change them there.
+- **Colour:** 29 papers, from `COLOURS` in `js/config.js`. Each one sets the paper (`bg`), the title colour (`text`) and the names / date colour (`sub`). Add `bg2` (and `bg3`) for a gradient, or `pattern: "gingham" | "dots" | "checker"` with a `pat` colour. On patterns, the text sits on a soft label so it stays readable.
 - **Effect:** from `js/effects.js`. Shapes are placed on the paper and the edges of the photos, never over the middle of a photo (faces) or over the text. They're always in the same places for a layout, so the preview matches the saved photo.
-- **Filter:** from `FILTERS` in `js/config.js`.
+- **Filter:** from `FILTERS` in `js/config.js`. Each is a list of steps: `brightness`, `contrast`, `saturate`, `sepia`, `grayscale`, `hue-rotate`, plus `tint` ([red, green, blue] multipliers, e.g. `[1.06, 1, 0.94]` = warmer) and `fade` (matte, lifted blacks).
 
 To add a layout, add it to `LAYOUTS` in `js/config.js`: the print's `width`, `height` and the photo `slots` (x, y, w, h in pixels). `makeGrid()` works out rows and columns for you. Leave space under the photos for the text.
 

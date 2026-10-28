@@ -6,11 +6,19 @@
 // =========================================================
 
 // CSS string for the live <video> preview, e.g. "grayscale(1) contrast(1.35)"
+// CSS has no "tint" or "fade", so the live preview gets the nearest CSS
+// look; the saved photo uses the exact maths below.
 function filterToCss(filter) {
   if (!filter.ops.length) return "none";
   return filter.ops
-    .map(([op, v]) => op === "hue-rotate" ? `${op}(${v}deg)` : `${op}(${v})`)
-    .join(" ");
+    .map(([op, v]) => {
+      if (op === "hue-rotate") return `${op}(${v}deg)`;
+      if (op === "fade") return `contrast(${1 - v})`;
+      if (op === "tint") return v[0] > v[2] ? `sepia(${Math.min(0.3, v[0] - v[2]).toFixed(2)})` : "";
+      return `${op}(${v})`;
+    })
+    .filter(Boolean)
+    .join(" ") || "none";
 }
 
 // Matrix for one step. Rows = new R, G, B. Columns = old R, G, B, offset.
@@ -45,6 +53,10 @@ function opMatrix(op, v) {
       const o = (0.5 - 0.5 * v) * 255;
       return [[v, 0, 0, o], [0, v, 0, o], [0, 0, v, o]];
     }
+    // Colour cast: ["tint", [red, green, blue]] multipliers, e.g. [1.06, 1, 0.94] = warmer
+    case "tint": return [[v[0], 0, 0, 0], [0, v[1], 0, 0], [0, 0, v[2], 0]];
+    // Faded / matte: blacks lift to dark grey, whites dip slightly
+    case "fade": return [[1 - v, 0, 0, v * 160], [0, 1 - v, 0, v * 160], [0, 0, 1 - v, v * 160]];
   }
   throw new Error("Unknown filter step: " + op);
 }
