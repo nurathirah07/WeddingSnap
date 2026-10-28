@@ -150,7 +150,46 @@ function show(screenId) {
 
   if (screenId === "gallery") loadGallery();
   window.scrollTo(0, 0);
+  keepAlive();
 }
+
+// Keep the music and the moving background going. Phones pause both when
+// something interrupts the page (a pop-up, a call, switching apps) and
+// don't always start them again by themselves. The background is also
+// hidden in the booth, so it's restarted when the guest leaves it.
+function keepAlive() {
+  if (document.hidden) return;
+  Sound.resume();
+  const bg = document.querySelector(".bgVideo");
+  if (bg && bg.paused && current !== "booth") bg.play().catch(() => {});
+}
+document.addEventListener("visibilitychange", keepAlive);
+window.addEventListener("pageshow", keepAlive);   // back from another page / the phone's app switcher
+window.addEventListener("focus", keepAlive);
+document.addEventListener("pointerdown", keepAlive, true);
+
+// "Are you sure?" in the page itself. The browser's confirm() shows a
+// system pop-up that, on phones, pauses the music and the background.
+let askDone = null;
+function ask(text, yes = "OK", danger = false) {
+  if (askDone) askDone(false);
+  return new Promise((resolve) => {
+    $("askText").textContent = text;
+    $("askYes").textContent = yes;
+    $("askYes").className = "btn " + (danger ? "danger" : "primary");
+    $("ask").classList.remove("hidden");
+    $(danger ? "askNo" : "askYes").focus();   // deleting is never the default
+    askDone = (answer) => {
+      askDone = null;
+      $("ask").classList.add("hidden");
+      resolve(answer);
+    };
+  });
+}
+$("askYes").addEventListener("click", () => askDone && askDone(true));
+$("askNo").addEventListener("click", () => askDone && askDone(false));
+$("ask").addEventListener("click", (e) => { if (e.target === $("ask") && askDone) askDone(false); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && askDone) askDone(false); });
 
 document.querySelectorAll("[data-go]").forEach((btn) =>
   btn.addEventListener("click", () => show(btn.dataset.go)));
@@ -164,6 +203,12 @@ function goBack() {
 
 window.addEventListener("popstate", () => {
   if (ignorePop) { ignorePop = false; return; }
+  // Back while "Are you sure?" is open = Cancel (and stay where we are)
+  if (askDone) {
+    askDone(false);
+    history.pushState(lbOpen() ? { lightbox: true } : { app: true }, "");
+    return;
+  }
   const lb = $("lightbox");
   if (!lb.classList.contains("hidden")) { lb.classList.add("hidden"); return; }
   goBack();
@@ -781,8 +826,8 @@ preview.addEventListener("click", (e) => {
   show("booth");
 });
 
-$("editBack").addEventListener("click", () => {
-  if (!confirm("Retake all photos?")) return;
+$("editBack").addEventListener("click", async () => {
+  if (!(await ask("Retake all photos? The ones you took will be cleared.", "Retake all"))) return;
   resetShots();
   show("booth");
 });
@@ -1071,7 +1116,7 @@ $("lbSave").addEventListener("click", () => {
 
 // Private → public: upload it, then forget the private copy
 $("lbShare").addEventListener("click", async () => {
-  if (!confirm("Share this photo to the couple's album? Everyone will be able to see it.")) return;
+  if (!(await ask("Share this photo to the couple's album? Everyone will be able to see it.", "Share"))) return;
   const photo = lbPhoto;
   $("lbShare").disabled = true;
   try {
@@ -1088,7 +1133,7 @@ $("lbShare").addEventListener("click", async () => {
 
 $("lbDelete").addEventListener("click", async () => {
   if (lbPhoto.private) {
-    if (!confirm("Delete this private photo? It isn't saved anywhere else.")) return;
+    if (!(await ask("Delete this private photo? It isn't saved anywhere else.", "Delete", true))) return;
     await Private.remove(lbPhoto.id).catch(() => {});
     URL.revokeObjectURL(lbPhoto.url);
     privatePhotos = privatePhotos.filter((p) => p.id !== lbPhoto.id);
@@ -1097,7 +1142,7 @@ $("lbDelete").addEventListener("click", async () => {
     toast("Photo deleted");
     return;
   }
-  if (!confirm("Delete this photo from the album?")) return;
+  if (!(await ask("Delete this photo from the album?", "Delete", true))) return;
   try {
     const res = await fetch(CONFIG.SCRIPT_URL, {
       method: "POST",

@@ -220,6 +220,18 @@
     </div>
   </div>
 
+  <!-- "Are you sure?" sheet. Used instead of the browser's confirm(), which
+       on phones pauses the music and the moving background -->
+  <div class="ask hidden" id="ask" role="alertdialog" aria-modal="true" aria-labelledby="askText">
+    <div class="askCard">
+      <p id="askText"></p>
+      <div class="row">
+        <button class="btn ghost" id="askNo">Cancel</button>
+        <button class="btn primary" id="askYes">OK</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script src="js/config.js?v=dev"></script>

@@ -62,8 +62,18 @@ const Sound = (() => {
       fxGain = ac.createGain();
       fxGain.gain.value = 0.5;
       fxGain.connect(ac.destination);
+      // Phones pause the sound when something interrupts the page (a pop-up,
+      // a call, a notification): start again straight away when possible
+      ac.onstatechange = () => { if (playing && ac.state !== "running" && !document.hidden) resume(); };
     }
     if (ac.state === "suspended") ac.resume();
+  }
+
+  // Pick the music up again after an interruption (see app.js keepAlive)
+  function resume() {
+    if (!playing || !ac) return;
+    if (ac.state !== "running") ac.resume().catch(() => {});
+    if (LOCAL && current && current.paused) current.play().catch(() => {});
   }
 
   // =========================================================
@@ -698,7 +708,7 @@ const Sound = (() => {
   }
 
   return {
-    unlock, beep, shutter, duck, canAutoplay, preload,
+    unlock, resume, beep, shutter, duck, canAutoplay, preload,
     get playing() { return playing; },
     toggle() { playing ? stopMusic() : startMusic(); return playing; },
   };
