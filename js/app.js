@@ -260,7 +260,9 @@ const settingsReady = (location.protocol === "file:"
 const frameImages = {};
 const ready = Promise.all([
   settingsReady,
-  document.fonts.load('italic 500 80px "Cormorant Garamond"'),
+  document.fonts.load('80px "Runiga"'),
+  document.fonts.load('40px "Runethia"'),
+  document.fonts.load('30px "Orange Avenue"'),
   document.fonts.load('500 30px "DM Sans"'),
   framesReady.then(() => Promise.all(FRAMES.filter((f) => f.type === "png").map((f) => new Promise((resolve) => {
     const img = new Image();
@@ -860,8 +862,8 @@ function drawFooter(ctx, g, fr) {
   ctx.textBaseline = "middle";
 
   ctx.fillStyle = fr.text;
-  fitText(ctx, CONFIG.TITLE, cx, bottom + space * 0.36, maxW, Math.round(big),
-          'italic 500 {size} "Cormorant Garamond", serif');
+  fitText(ctx, CONFIG.TITLE, cx, bottom + space * 0.36, maxW, Math.round(big * 0.86),
+          '400 {size} "Runiga", Georgia, serif');
 
   // thin divider line
   ctx.strokeStyle = fr.sub;
@@ -874,10 +876,10 @@ function drawFooter(ctx, g, fr) {
   ctx.globalAlpha = 1;
 
   ctx.fillStyle = fr.sub;
-  fitText(ctx, CONFIG.COUPLE, cx, bottom + space * 0.68, maxW, Math.round(big * 0.36),
-          '500 {size} "DM Sans", sans-serif');
-  fitText(ctx, CONFIG.DATE, cx, bottom + space * 0.82, maxW, Math.round(big * 0.3),
-          '400 {size} "DM Sans", sans-serif');
+  fitText(ctx, CONFIG.COUPLE, cx, bottom + space * 0.68, maxW, Math.round(big * 0.5),
+          '400 {size} "Runethia", Georgia, serif');
+  fitText(ctx, CONFIG.DATE, cx, bottom + space * 0.84, maxW, Math.round(big * 0.3),
+          '400 {size} "Orange Avenue", Georgia, serif');
 }
 
 async function goToEdit() {
