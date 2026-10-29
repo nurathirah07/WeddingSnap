@@ -92,7 +92,7 @@
       const info = document.createElement("div");
       info.className = "albumInfo";
       const when = document.createElement("small");
-      when.textContent = fmtWhen(p.time) + (p.name ? " · " + p.name : "") + (p.likes ? " · ♥ " + p.likes : "") + (p.gif ? " · live" : "");
+      when.textContent = fmtWhen(p.time) + (p.name ? " · " + p.name : "") + (p.likes ? " · ♥ " + p.likes : "") + (p.live || p.gif ? " · live" : "");
       info.appendChild(when);
       if (p.wish) {
         const w = document.createElement("p");

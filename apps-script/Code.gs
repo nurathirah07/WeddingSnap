@@ -24,8 +24,10 @@ const PART_BYTES = 25 * 1024 * 1024;   // "Download all": zip files of about thi
 //   wish_<photoId> = { n: name, w: wish }
 //   hide_<photoId> = "1" when the couple hid it
 //   likes_<photoId> = ["ab12…", …] who liked it (short hashes of phone ids)
+//   live_<photoId>  = the id of its GIF (a Live photo: sharp JPG + moving GIF)
 
-// GET ?action=list  → { ok, photos: [{ id, time, wish?, name?, likes?, gif? }] }  newest first
+// GET ?action=list  → { ok, photos: [{ id, time, wish?, name?, likes?, live?, gif? }] }  newest first
+//   live = the GIF of a Live photo; gif = an older live photo that is a GIF only
 function doGet(e) {
   // e is missing when you press Run on doGet in the editor - just list photos then
   const action = (e && e.parameter && e.parameter.action) || "list";
@@ -34,7 +36,9 @@ function doGet(e) {
 }
 
 // POST (JSON body):
-//   { action: "upload", image, token, wish?, name? }  - image: JPEG, or GIF (boomerang)
+//   { action: "upload", image, live?, token, wish?, name? }
+//        image: the print as a JPEG (or a GIF from older versions of the app)
+//        live:  its moving GIF, for a Live photo
 //   { action: "delete", id, token }                   - a guest deletes their own
 //   { action: "like", id, liker, on }                 - liker = the phone's own id
 //   { action: "adminList", key }                      - every photo, hidden ones too
@@ -76,22 +80,27 @@ function upload(body) {
 
   const bytes = Utilities.base64Decode(match[2]);
   if (bytes.length > MAX_BYTES) return { ok: false, error: "Image too large" };
+  // A Live photo's GIF (optional: if it's missing or too big, the photo
+  // still arrives as a still)
+  const liveMatch = type === "jpeg" && /^data:image\/gif;base64,(.+)$/.exec(body.live || "");
+  const liveBytes = liveMatch ? Utilities.base64Decode(liveMatch[1]) : null;
 
+  const folder = DriveApp.getFolderById(FOLDER_ID);
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
-  const name = (type === "gif" ? "boomerang-" : "snap-") + stamp + "-" + body.token.slice(0, 6) + (type === "gif" ? ".gif" : ".jpg");
-  const file = DriveApp.getFolderById(FOLDER_ID).createFile(Utilities.newBlob(bytes, "image/" + type, name));
-
-  // Guests' phones need to see the photo in the gallery
-  try {
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  } catch (err) {
-    // Some school/work accounts block this - share the folder manually instead
-  }
+  const base = stamp + "-" + body.token.slice(0, 6);
+  const name = (type === "gif" ? "boomerang-" : "snap-") + base + (type === "gif" ? ".gif" : ".jpg");
+  const file = folder.createFile(Utilities.newBlob(bytes, "image/" + type, name));
+  share(file);
 
   const saved = {
     ["del_" + file.getId()]: tokenHash,   // a hash of the delete token (never the token itself)
     ["up_" + tokenHash]: file.getId(),
   };
+  if (liveBytes && liveBytes.length <= MAX_BYTES) {
+    const live = folder.createFile(Utilities.newBlob(liveBytes, "image/gif", "live-" + base + ".gif"));
+    share(live);
+    saved["live_" + file.getId()] = live.getId();
+  }
   // The guest's wish (ucapan) for the couple, if they wrote one
   const wish = clean(body.wish, MAX_WISH);
   const from = clean(body.name, MAX_NAME);
@@ -103,6 +112,15 @@ function upload(body) {
   props.setProperties(saved);
   CacheService.getScriptCache().remove(CACHE_KEY);
   return { ok: true, id: file.getId() };
+}
+
+// Guests' phones need to see the photo in the gallery
+function share(file) {
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    // Some school/work accounts block this - share the folder manually instead
+  }
 }
 
 // Only the phone that uploaded a photo knows its token, so only it can delete
@@ -118,7 +136,9 @@ function remove(body) {
 function trash(id) {
   DriveApp.getFileById(id).setTrashed(true);
   const props = PropertiesService.getScriptProperties();
-  ["del_", "wish_", "hide_", "likes_"].forEach((p) => props.deleteProperty(p + id));
+  const live = props.getProperty("live_" + id);   // a Live photo's GIF goes too
+  if (live) { try { DriveApp.getFileById(live).setTrashed(true); } catch (err) {} }
+  ["del_", "wish_", "hide_", "likes_", "live_"].forEach((p) => props.deleteProperty(p + id));
   CacheService.getScriptCache().remove(CACHE_KEY);
   return { ok: true };
 }
@@ -157,8 +177,12 @@ function setHidden(id, hidden) {
 // out, except for the couple (admin), who also sees which ones are hidden.
 function listPhotos(isAdmin) {
   const props = PropertiesService.getScriptProperties().getProperties();
+  // Live photos' GIFs are part of their photo, not photos of their own
+  const liveGifs = {};
+  Object.keys(props).forEach((k) => { if (k.indexOf("live_") === 0) liveGifs[props[k]] = true; });
   const photos = [];
   driveList().forEach((p) => {
+    if (liveGifs[p.id]) return;
     const hidden = !!props["hide_" + p.id];
     if (hidden && !isAdmin) return;
     const photo = { id: p.id, time: p.time };
@@ -174,7 +198,8 @@ function listPhotos(isAdmin) {
     if (likes) {
       try { const n = JSON.parse(likes).length; if (n) photo.likes = n; } catch (err) {}
     }
-    if (p.gif) photo.gif = true;
+    if (props["live_" + p.id]) photo.live = props["live_" + p.id];
+    else if (p.gif) photo.gif = true;
     if (isAdmin && hidden) photo.hidden = true;
     photos.push(photo);
   });

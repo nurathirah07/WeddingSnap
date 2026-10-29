@@ -114,10 +114,15 @@ async function next() {
   }
   loading = true;
   try {
-    // a live photo: the full GIF, so it moves
-    const img = await loadImage(choice.photo.gif ? `https://drive.google.com/uc?export=view&id=${choice.photo.id}` : thumbUrl(choice.photo.id, 1600));
+    // a live photo: the full GIF, so it moves (older ones are a GIF only;
+    // newer ones are a sharp photo + its GIF)
+    const p = choice.photo;
+    const [img, live] = await Promise.all([
+      loadImage(p.gif ? `https://drive.google.com/uc?export=view&id=${p.id}` : thumbUrl(p.id, 1600)),
+      p.live ? liveGif(p.live).catch(() => null) : null,
+    ]);
     $("showEmpty").classList.add("hidden");
-    show(choice.photo, img, choice.isNew);
+    show(p, img, choice.isNew, live);
   } catch (err) {
     console.warn("Skipping a photo that didn't load", err);
   }
@@ -125,8 +130,22 @@ async function next() {
   slideTimer = setTimeout(next, showing ? SLIDE_MS : 1500);
 }
 
+// A Live photo's GIF, read from Drive (the original file), and how long one
+// play-through lasts. It ends on the snap, so it fades neatly into the still.
+async function liveGif(id) {
+  const res = await fetch(`https://lh3.googleusercontent.com/d/${id}=d`);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let ms = 0;   // frame delays (hundredths of a second) add up to one play
+  for (let i = 0; i < bytes.length - 5; i++) {
+    if (bytes[i] === 0x21 && bytes[i + 1] === 0xf9 && bytes[i + 2] === 0x04) ms += (bytes[i + 4] | (bytes[i + 5] << 8)) * 10;
+  }
+  const img = await loadImage(URL.createObjectURL(new Blob([bytes], { type: "image/gif" })));
+  return { img, ms: Math.min(ms, SLIDE_MS - 2000) };
+}
+
 // ---------- One slide ----------
-function show(photo, img, isNew) {
+function show(photo, img, isNew, live) {
   showing = photo;
   side = 1 - side;
   const slide = document.createElement("section");
@@ -140,7 +159,17 @@ function show(photo, img, isNew) {
   print.className = "slidePrint";
   print.style.setProperty("--tilt", (side ? 1.6 : -1.6) + "deg");
   img.alt = "";
-  print.appendChild(img);
+  const pic = document.createElement("span");
+  pic.className = "slidePhoto";
+  pic.appendChild(img);
+  if (live) {
+    // plays once over the still, then fades away just before it would repeat
+    live.img.className = "slideLive";
+    live.img.alt = "";
+    pic.appendChild(live.img);
+    setTimeout(() => live.img.classList.add("done"), Math.max(1500, live.ms - 600));
+  }
+  print.appendChild(pic);
   if (isNew) {
     const badge = document.createElement("span");
     badge.className = "slideNew";
@@ -186,7 +215,10 @@ function show(photo, img, isNew) {
   requestAnimationFrame(() => requestAnimationFrame(() => slide.classList.add("in")));
   old.forEach((o) => {
     o.classList.add("out");
-    setTimeout(() => o.remove(), 1600);
+    setTimeout(() => {
+      o.querySelectorAll("img.slideLive").forEach((i) => URL.revokeObjectURL(i.src));
+      o.remove();
+    }, 1600);
   });
 }
 

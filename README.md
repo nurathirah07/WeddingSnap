@@ -14,7 +14,7 @@ No app download, no login. Total cost: RM0.
 - **Gallery picks:** choose a photo from the phone instead of the camera
 - **Uploads:** photos go automatically to Google Drive. With a bad signal they wait on the phone and send by themselves later (never twice).
 - **Works offline:** after the first visit the app opens with no signal, and it can be added to the home screen like an app (`sw.js`, `manifest.webmanifest`)
-- **Live photos:** like a real photobooth's live view, every shot also records the countdown before the click (up to 4 seconds). On the edit screen guests choose **Still** (a photo, the default) or **Live**: a GIF of the whole print where every photo plays forwards through its countdown, lands on the snap, holds for a moment and starts again
+- **Live photos:** like a real photobooth's live view, every shot also records the countdown before the click (up to 4 seconds). On the edit screen guests choose **Still** (a photo, the default) or **Live**: a GIF of the whole print where every photo plays forwards through its countdown, lands on the snap, holds for a moment and starts again. A Live print is shared as both a sharp photo and its GIF: in the gallery it plays; tapped, it opens as the sharp photo; **press and hold** to watch it move. On the slideshow it plays once, then settles on the sharp photo
 - **Stickers:** "Tahniah!", "Selamat Pengantin Baru", a songkok, crown, heart shades… guests drag, pinch to resize and turn
 - **Likes:** guests ♥ photos in the gallery (or double-tap in the viewer); favourites come up more on the slideshow
 - **Wishes (ucapan):** guests can add their name and a short wish when they share a photo
@@ -23,7 +23,7 @@ No app download, no login. Total cost: RM0.
 - **Delete:** guests can delete their own uploads, but not anyone else's. The couple can hide or delete any photo from the admin page.
 - **Table card:** the admin page makes a printable QR card that matches the album cover
 - **Download all:** one button in admin packs every photo into zip files (plus the wishes as a spreadsheet)
-- **Save to phone:** opens the share sheet on mobile, downloads on desktop
+- **Save to phone:** opens the share sheet on mobile, downloads on desktop. For a Live print guests pick **Photo** (sharp JPG), **Live** (moving GIF) or both
 - **Music:** starts on the first tap. It shuffles the songs in `music/`, jumps straight to the chorus, mixes between songs with DJ transitions and repeats forever (Web Audio API). It also turns down during the countdown.
 
 ## Project files
@@ -148,12 +148,12 @@ Everything has been tested in Chrome on a computer; phones behave a little diffe
 1. **Open the link** from the table card QR code. The welcome cover shows, and tapping it starts the music.
 2. **Music:** leave it for 2 minutes - songs should change smoothly. Lock the phone and unlock it: the music should carry on (or start again on the next tap).
 3. **Camera:** take a 4-Cut strip. The camera permission question should appear the first time. Try the front and back cameras.
-4. **Live:** take a strip, switch the edit screen to **Live** - every photo should play its countdown and stop on the snap. Share it: it should keep playing on the result screen and in the gallery.
+4. **Live:** take a strip, switch the edit screen to **Live** - every photo should play its countdown and stop on the snap. Share it: it should keep playing on the result screen and in the gallery. Tap it in the gallery: the sharp photo opens. Press and hold: it plays; let go: it stops.
 5. **Stickers:** add two, drag them, pinch to resize and turn, remove one with ×.
 6. **Share with no signal:** turn on Airplane mode, share a photo with a wish. It should say "Saved on your phone". Turn Airplane mode off: within a few seconds "Your photo reached the album ✓".
 7. **Offline:** with Airplane mode on, close the browser tab and open the link again - the app should still open.
 8. **Likes:** ♥ a photo in the gallery; check the number goes up in admin.
-9. **Save to phone:** a Still and a Live print both save to the camera roll / gallery.
+9. **Save to phone:** a Still print saves straight away. A Live print asks Photo / Live / Save both - try each, from the result screen and from the gallery.
 10. **Add to home screen** (Safari: Share → Add to Home Screen; Chrome: ⋮ → Install app), then open it from the icon.
 11. **Slideshow** on the actual TV or projector: new photos appear within a few seconds; the QR code in the corner scans from across the room.
 12. **Admin:** open the album with your admin key, hide a photo (it leaves the slideshow), then **Download all photos**.

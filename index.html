@@ -202,7 +202,10 @@
     <div class="result-inner">
       <p class="eyebrow">Your print is ready</p>
       <div class="printSlot">
-        <img id="resultImg" alt="Your photo">
+        <div class="printPhoto">
+          <img id="resultImg" alt="Your photo">
+          <span class="liveTag hidden" id="resultLive"><i class="liveIcon" aria-hidden="true"></i>Live</span>
+        </div>
       </div>
       <p class="uploadStatus" id="uploadStatus"></p>
 
@@ -241,9 +244,14 @@
     <div class="lbStage" id="lbStage">
       <button class="lbNav" id="lbPrev" aria-label="Previous photo"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
       <img id="lbImg" alt="">
+      <!-- a Live photo's GIF, over the still while it's held -->
+      <img id="lbLive" alt="" aria-hidden="true">
       <span class="lbHeart" id="lbHeart" aria-hidden="true">♥</span>
       <button class="lbNav" id="lbNext" aria-label="Next photo"><svg class="ic" aria-hidden="true"><use href="#i-next"/></svg></button>
     </div>
+    <button class="lbLiveHint hidden" id="lbLiveHint" aria-label="Live photo: press and hold to play">
+      <i class="liveIcon" aria-hidden="true"></i><span class="off">Live · hold to play</span><span class="on">Playing</span>
+    </button>
     <p class="lbWish hidden" id="lbWish"></p>
     <div class="row">
       <span id="lbLikeSlot"></span>
@@ -278,6 +286,25 @@
         <button class="btn ghost" id="askNo">Cancel</button>
         <button class="btn primary" id="askYes">OK</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Saving a Live photo: the sharp still, the moving GIF, or both -->
+  <div class="ask hidden" id="saveSheet" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
+    <div class="askCard saveCard">
+      <p class="eyebrow" id="saveTitle">Save to your phone</p>
+      <div class="saveOpts">
+        <button class="saveOpt" data-save="still">
+          <span class="saveThumb"><img id="saveStill" alt=""></span>
+          <b>Photo</b><small>Sharp still · JPG</small>
+        </button>
+        <button class="saveOpt" data-save="live">
+          <span class="saveThumb"><img id="saveLive" alt=""><span class="liveTag"><i class="liveIcon" aria-hidden="true"></i>Live</span></span>
+          <b>Live</b><small>Moving · GIF</small>
+        </button>
+      </div>
+      <button class="btn primary" data-save="both">Save both</button>
+      <button class="btn link" id="saveCancel">Cancel</button>
     </div>
   </div>
 

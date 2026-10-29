@@ -107,17 +107,18 @@ const DB = {
   },
 };
 
+// blob = the print as a sharp JPG; live = its moving GIF (Live photos only)
 const Private = {
-  async add(blob) {
+  async add(blob, live = null) {
     const id = "private-" + randomToken();
-    await DB.run("private", "readwrite", (s) => s.put({ id, blob, time: Date.now() }));
+    await DB.run("private", "readwrite", (s) => s.put({ id, blob, live, time: Date.now() }));
     return id;
   },
   all()      { return DB.run("private", "readonly", (s) => s.getAll()).catch(() => []); },
   remove(id) { return DB.run("private", "readwrite", (s) => s.delete(id)); },
 };
 
-// { id (= the upload token), blob, time, wish, name, tries }
+// { id (= the upload token), blob, live?, time, wish, name, tries }
 const Outbox = {
   put(item)  { return DB.run("outbox", "readwrite", (s) => s.put(item)); },
   all()      { return DB.run("outbox", "readonly", (s) => s.getAll()).catch(() => []); },
@@ -1391,23 +1392,26 @@ $("doneBtn").addEventListener("click", async () => {
   $("doneBtn").disabled = true;
   stopCamera();
 
-  let blob, dataUrl;
-  if (liveOn()) {
+  // Always the sharp still (JPG). A Live photo also gets its GIF: the album
+  // plays the GIF, but shows and saves the sharp still too.
+  const wantLive = liveOn();
+  stopClip();
+  const out = document.createElement("canvas");
+  compose(out);
+  const blob = await new Promise((r) => out.toBlob(r, "image/jpeg", 0.9));
+  const dataUrl = out.toDataURL("image/jpeg", 0.88);
+  let live = null;
+  if (wantLive) {
     const label = $("doneBtn").textContent;
     $("doneBtn").textContent = "Making your live photo…";
-    blob = await makeGif();
-    dataUrl = await blobToDataUrl(blob);
+    live = await makeGif();
     $("doneBtn").textContent = label;
-  } else {
-    const out = document.createElement("canvas");
-    compose(out);
-    blob = await new Promise((r) => out.toBlob(r, "image/jpeg", 0.9));
-    dataUrl = out.toDataURL("image/jpeg", 0.88);
   }
-  if (state.final) URL.revokeObjectURL(state.final.url);
-  state.final = { blob, url: URL.createObjectURL(blob), dataUrl };
+  if (state.final) [state.final.url, state.final.liveUrl].forEach((u) => u && URL.revokeObjectURL(u));
+  state.final = { blob, url: URL.createObjectURL(blob), dataUrl, live, liveUrl: live && URL.createObjectURL(live) };
 
-  $("resultImg").src = state.final.url;
+  $("resultImg").src = state.final.liveUrl || state.final.url;
+  $("resultLive").classList.toggle("hidden", !live);
   $("doneBtn").disabled = false;
   show("result");
   if (state.privacy === "private") keepPrivate();
@@ -1453,13 +1457,14 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && wishDone
 // =========================================================
 //  5. RESULT  (upload + save)
 // =========================================================
-// Upload a JPEG (data: URL) to the Drive album. Returns the new photo's id.
+// Upload a JPEG (data: URL) to the Drive album, with its GIF for a Live
+// photo. Returns the new photo's id.
 // The token is the photo's own key: sending it again never makes a copy.
-async function sendToAlbum(dataUrl, { token = randomToken(), wish = "", name = "" } = {}) {
+async function sendToAlbum(dataUrl, { token = randomToken(), wish = "", name = "", live = "" } = {}) {
   // text/plain body = no CORS preflight, which Apps Script can't answer
   const res = await fetch(CONFIG.SCRIPT_URL, {
     method: "POST",
-    body: JSON.stringify({ action: "upload", image: dataUrl, token, wish, name }),
+    body: JSON.stringify({ action: "upload", image: dataUrl, live: live || undefined, token, wish, name }),
   });
   const data = await res.json();
   if (!data.ok) {
@@ -1478,8 +1483,8 @@ async function sendToAlbum(dataUrl, { token = randomToken(), wish = "", name = "
 //  phone is back online, and when the app is opened again. Guests can
 //  carry on taking photos meanwhile.
 // =========================================================
-async function queuePhoto(blob, { wish = "", name = "" } = {}) {
-  const item = { id: randomToken(), blob, time: Date.now(), wish, name, tries: 0 };
+async function queuePhoto(blob, { wish = "", name = "" } = {}, live = null) {
+  const item = { id: randomToken(), blob, live, time: Date.now(), wish, name, tries: 0 };
   await Outbox.put(item);
   return item.id;
 }
@@ -1497,7 +1502,10 @@ const Sender = (() => {
       if (!items.length) return true;
       const item = items[0];
       try {
-        const id = await sendToAlbum(await blobToDataUrl(item.blob), { token: item.id, wish: item.wish, name: item.name });
+        const id = await sendToAlbum(await blobToDataUrl(item.blob), {
+          token: item.id, wish: item.wish, name: item.name,
+          live: item.live ? await blobToDataUrl(item.live) : "",
+        });
         await Outbox.remove(item.id);
         window.dispatchEvent(new CustomEvent("photosent", { detail: { token: item.id, id } }));
       } catch (err) {
@@ -1505,7 +1513,7 @@ const Sender = (() => {
         // The album keeps refusing it (not a signal problem): keep it as a
         // private photo instead, so it's never lost and the queue moves on
         if (err.server && ++item.tries >= 3) {
-          await Private.add(item.blob);
+          await Private.add(item.blob, item.live);
           await Outbox.remove(item.id);
           toast("A photo couldn't be shared. It's kept under Gallery → Mine.");
           continue;
@@ -1564,7 +1572,7 @@ async function keepPrivate() {
   const status = $("uploadStatus");
   status.className = "uploadStatus";
   try {
-    state.final.privateId = await Private.add(state.final.blob);
+    state.final.privateId = await Private.add(state.final.blob, state.final.live);
     status.textContent = "Kept private. Only you can see it, under Gallery → Mine. Save it to your phone to keep it for good.";
   } catch (err) {
     console.warn(err);
@@ -1600,11 +1608,11 @@ async function upload(wish = {}) {
 
   let token;
   try {
-    token = await queuePhoto(state.final.blob, wish);
+    token = await queuePhoto(state.final.blob, wish, state.final.live);
   } catch (err) {
     // This browser can't store it (rare): send it straight away instead
     try {
-      await sendToAlbum(state.final.dataUrl, wish);
+      await sendToAlbum(state.final.dataUrl, { ...wish, live: state.final.live ? await blobToDataUrl(state.final.live) : "" });
       showSent();
       return true;
     } catch (e) {
@@ -1631,22 +1639,65 @@ async function upload(wish = {}) {
 }
 
 // Phones: open the share sheet ("Save Image"). Computers: normal download.
-async function savePhoto(blob, name) {
-  if (blob.type === "image/gif") name = name.replace(/\.jpg$/, ".gif");   // live photo
-  const file = new File([blob], name, { type: blob.type || "image/jpeg" });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file] }); return; }
+async function saveFiles(blobs, name) {
+  const files = blobs.map((b) => new File([b], name + (b.type === "image/gif" ? ".gif" : ".jpg"), { type: b.type || "image/jpeg" }));
+  if (navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files }); return; }
     catch (e) { if (e.name === "AbortError") return; }
   }
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  files.forEach((f, i) => setTimeout(() => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(f);
+    a.download = f.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, i * 400));
 }
 
-$("saveBtn").addEventListener("click", () =>
-  savePhoto(state.final.blob, "wedding-snap-" + Date.now() + ".jpg"));
+// A Live photo can be saved as the sharp still, the moving GIF, or both.
+// Resolves "still" | "live" | "both", or null if they closed it.
+let saveDone = null;
+function chooseSave(stillSrc, liveSrc) {
+  if (saveDone) saveDone(null);
+  return new Promise((resolve) => {
+    $("saveStill").src = stillSrc;
+    $("saveLive").removeAttribute("src");
+    liveSrc.then((src) => { if (saveDone && src) $("saveLive").src = src; });
+    $("saveSheet").classList.remove("hidden");
+    saveDone = (kind) => {
+      saveDone = null;
+      $("saveSheet").classList.add("hidden");
+      resolve(kind);
+    };
+  });
+}
+document.querySelectorAll("[data-save]").forEach((b) => b.addEventListener("click", () => { tick(); saveDone && saveDone(b.dataset.save); }));
+$("saveCancel").addEventListener("click", () => saveDone && saveDone(null));
+$("saveSheet").addEventListener("click", (e) => { if (e.target === $("saveSheet") && saveDone) saveDone(null); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && saveDone) { e.stopImmediatePropagation(); saveDone(null); }   // not the viewer behind too
+});
+
+// Save a print: on this phone (blob = JPG, live = GIF) or in the album
+// (id, live = the GIF's id). A Live photo asks which.
+async function savePrint(p) {
+  const local = !!p.blob;
+  const liveId = !local && (p.live || (p.gif && p.id));
+  const still = hasStill(p) && (local ? { blob: p.blob } : { id: p.id, blob: albumBlob(p.id) });
+  const live = isLive(p) && (local ? { blob: p.live || p.blob } : { id: liveId, blob: albumBlob(liveId) });
+  let picks = [still || live];
+  if (still && live) {
+    const kind = await chooseSave(local ? p.url : thumbUrl(p.id, 400), liveUrlOf(p).catch(() => null));
+    if (!kind) return;
+    picks = kind === "both" ? [still, live] : [kind === "live" ? live : still];
+  }
+  const name = "wedding-snap-" + (p.time || Date.now());
+  if (picks.every((x) => x.blob)) return saveFiles(picks.map((x) => x.blob), name);
+  // Not downloaded yet (or Drive wouldn't let us): Drive's own download
+  picks.forEach((x) => window.open(`https://drive.google.com/uc?export=download&id=${x.id}`, "_blank"));
+}
+
+$("saveBtn").addEventListener("click", () => savePrint({ ...state.final, time: Date.now() }));
 
 $("againBtn").addEventListener("click", () => {
   resetShots();
@@ -1666,12 +1717,72 @@ const photoSrc = (p, size) => p.url || thumbUrl(p.id, size);
 // the full GIF, so a live photo moves (Drive's thumbnails are stills)
 const gifUrl = (id) => `https://drive.google.com/uc?export=view&id=${id}`;
 
+// Live photos: a sharp JPG + its GIF (album: `live` = the GIF's id; on this
+// phone: `live` = the GIF itself). Older live photos are a GIF only.
+const gifOnly = (p) => p.blob ? p.blob.type === "image/gif" : !!p.gif;
+const isLive = (p) => !!p.live || gifOnly(p);
+const hasStill = (p) => !gifOnly(p);
+
+// Album files exactly as they were uploaded. Drive's image server (lh3)
+// hands over the original file and lets the page read it, so the viewer
+// shows the full photo, a GIF can restart, and Save goes straight to the phone.
+const albumFiles = new Map();   // Drive id → { blob, url, wait }
+function albumFile(id, type) {
+  let f = albumFiles.get(id);
+  if (!f) {
+    f = { blob: null, url: null };
+    f.wait = fetch(`https://lh3.googleusercontent.com/d/${id}=d`)
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("HTTP " + r.status))))
+      .then((b) => { f.blob = new Blob([b], { type }); f.url = URL.createObjectURL(f.blob); return f; })
+      .catch((err) => { albumFiles.delete(id); throw err; });
+    albumFiles.set(id, f);
+    // keep only the latest few in memory
+    if (albumFiles.size > 24) {
+      const [oldId, old] = albumFiles.entries().next().value;
+      albumFiles.delete(oldId);
+      old.wait.then((o) => URL.revokeObjectURL(o.url), () => {});
+    }
+  }
+  return f.wait;
+}
+const albumBlob = (id) => (albumFiles.get(id) || {}).blob || null;   // only if already here
+
+// The moving GIF of a Live photo, as a URL an <img> can show
+async function liveUrlOf(p) {
+  if (p.blob) return p.liveUrl || (gifOnly(p) ? p.url : null);
+  const id = p.live || (p.gif && p.id);
+  if (!id) return null;
+  try { return (await albumFile(id, "image/gif")).url; }
+  catch (err) { return gifUrl(id); }
+}
+
+// Live photos move in the gallery while they're on screen. The sharp still
+// shows until the GIF is here, and again once scrolled away (smoother phones).
+const tilePhoto = new WeakMap();
+const liveTiles = "IntersectionObserver" in window && new IntersectionObserver((entries) => entries.forEach(({ target: tile, isIntersecting: on }) => {
+  const p = tilePhoto.get(tile);
+  const img = tile.querySelector("img");
+  tile.dataset.on = on ? "1" : "";
+  if (!on) {
+    const still = photoSrc(p, 500);
+    if (img.src !== still) img.src = still;
+    return;
+  }
+  liveUrlOf(p).then((url) => {
+    if (!url) return;
+    const gif = new Image();
+    gif.onload = () => { if (tile.dataset.on) img.src = url; };
+    gif.src = url;
+  });
+}), { rootMargin: "120px 0px" });
+
 // Photos stored on this phone (private + waiting to send), shown under Mine
 async function loadPrivate() {
-  [...privatePhotos, ...pendingPhotos].forEach((p) => URL.revokeObjectURL(p.url));
+  [...privatePhotos, ...pendingPhotos].forEach((p) => [p.url, p.liveUrl].forEach((u) => u && URL.revokeObjectURL(u)));
   const [priv, waiting] = await Promise.all([Private.all(), Outbox.all()]);
-  privatePhotos = priv.map((p) => ({ ...p, private: true, url: URL.createObjectURL(p.blob) }));
-  pendingPhotos = waiting.map((p) => ({ ...p, pending: true, url: URL.createObjectURL(p.blob) }));
+  const urls = (p) => ({ url: URL.createObjectURL(p.blob), liveUrl: p.live ? URL.createObjectURL(p.live) : null });
+  privatePhotos = priv.map((p) => ({ ...p, private: true, ...urls(p) }));
+  pendingPhotos = waiting.map((p) => ({ ...p, pending: true, ...urls(p) }));
 }
 
 async function loadGallery() {
@@ -1717,11 +1828,12 @@ function renderGallery() {
     : "No photos yet. Be the first to share one.";
 
   const grid = $("galleryGrid");
+  if (liveTiles) liveTiles.disconnect();
   grid.innerHTML = "";
   list.forEach((p, i) => {
     const item = document.createElement("button");
     item.className = "tile" + (p.private ? " private" : p.pending ? " pending" : mine[p.id] ? " mine" : "") +
-      (p.gif || (p.blob && p.blob.type === "image/gif") ? " gif" : "");
+      (isLive(p) ? " live" : "");
     item.style.setProperty("--i", Math.min(i, 10));
     const img = document.createElement("img");
     img.loading = "lazy";
@@ -1736,9 +1848,10 @@ function renderGallery() {
       wish.textContent = "“" + p.wish + "”";
       item.appendChild(wish);
     }
-    item.setAttribute("aria-label", "View photo " + (i + 1));
+    item.setAttribute("aria-label", "View " + (isLive(p) ? "live photo " : "photo ") + (i + 1));
     item.addEventListener("click", () => openLightbox(i, img));
     grid.appendChild(item);
+    if (isLive(p) && hasStill(p) && liveTiles) { tilePhoto.set(item, p); liveTiles.observe(item); }
   });
 }
 
@@ -1833,6 +1946,7 @@ function openLightbox(i, from) {
 // Hide the viewer, shrinking back into its gallery picture if that's
 // the photo still showing
 function hideLightbox() {
+  liveHold(false);
   const back = lbFrom && lbFrom.isConnected && lbIndex === lbFromIndex;   // still the photo that was tapped
   const frames = back && !reduceMotion() && zoomFrames(lbFrom);
   lbFrom = null;
@@ -1849,21 +1963,39 @@ function showPhoto(i) {
   lbPhoto = galleryList[lbIndex];
 
   // Show the small picture the gallery already loaded straight away,
-  // then swap in the sharp one once it has downloaded
+  // then swap in the full one once it has downloaded. A Live photo shows
+  // its sharp still here; press and hold to see it move.
   const img = $("lbImg");
   const id = lbPhoto.id;
   const local = !!lbPhoto.blob;   // on this phone (private / waiting to send)
   img.src = photoSrc(lbPhoto, 500);
   img.classList.toggle("loading", !local);
   if (!local) {
-    const big = new Image();
-    big.onload = () => {
-      if (lbPhoto && lbPhoto.id === id) { img.src = big.src; img.classList.remove("loading"); }
-    };
-    big.src = lbPhoto.gif ? gifUrl(id) : thumbUrl(id, 1600);
+    const photo = lbPhoto;
+    const full = hasStill(photo)
+      ? albumFile(id, "image/jpeg").then((f) => f.url, () => thumbUrl(id, 1600))
+      : liveUrlOf(photo);
+    full.then((src) => {
+      const big = new Image();
+      big.onload = () => {
+        if (lbPhoto === photo) { img.src = big.src; img.classList.remove("loading"); }
+      };
+      big.src = src;
+    });
   }
+  const holdable = isLive(lbPhoto) && hasStill(lbPhoto);
+  liveHold(false);
+  lb.classList.toggle("isLive", holdable);
+  $("lbLiveHint").classList.toggle("hidden", !holdable);
+  $("lbLive").removeAttribute("src");
+  if (holdable) liveUrlOf(lbPhoto);   // get the GIF ready for the press
   // Preload the neighbours so swiping feels instant
-  if (n > 1) [lbIndex + 1, lbIndex - 1].forEach((j) => { new Image().src = photoSrc(galleryList[(j + n) % n], 1600); });
+  if (n > 1) [lbIndex + 1, lbIndex - 1].forEach((j) => {
+    const q = galleryList[(j + n) % n];
+    if (q.blob) return;
+    if (hasStill(q)) albumFile(q.id, "image/jpeg").catch(() => {});
+    else new Image().src = photoSrc(q, 1600);
+  });
 
   $("lbCount").textContent = n > 1 ? `${lbIndex + 1} / ${n}` : "";
   $("lbPrev").classList.toggle("hidden", n < 2);
@@ -1893,6 +2025,65 @@ function showPhoto(i) {
   }
 }
 
+// ---------- Live photos in the viewer: press and hold to play ----------
+// While held, the GIF plays over the still from its first frame (a fresh
+// copy each time); let go and the still is back.
+let liveCopy = null;   // the URL made for the current press
+async function liveHold(on) {
+  const live = $("lbLive");
+  if (!on) {
+    lb.classList.remove("playing");
+    return;
+  }
+  if (lb.classList.contains("playing") || !lb.classList.contains("isLive")) return;
+  // sit exactly over the still (measured before the little "lift")
+  const r = $("lbImg").getBoundingClientRect(), s = $("lbStage").getBoundingClientRect();
+  Object.assign(live.style, { left: r.left - s.left + "px", top: r.top - s.top + "px", width: r.width + "px", height: r.height + "px" });
+  live.removeAttribute("src");
+  lb.classList.add("playing");
+  tick();
+  const p = lbPhoto;
+  const blob = p.blob ? p.live : albumBlob(p.live);
+  let src;
+  if (blob) {
+    if (liveCopy) URL.revokeObjectURL(liveCopy);
+    src = liveCopy = URL.createObjectURL(blob);
+  } else {
+    src = await liveUrlOf(p);
+  }
+  if (lbPhoto === p && lb.classList.contains("playing")) live.src = src;
+}
+
+// Press and hold the photo (a quick tap, a double-tap ♥ or a swipe don't count)
+let holdTimer = null, holdFrom = null, held = false;
+$("lbImg").addEventListener("pointerdown", (e) => {
+  held = false;
+  if (!lb.classList.contains("isLive")) return;
+  holdFrom = [e.clientX, e.clientY];
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => { held = true; liveHold(true); }, 220);
+});
+$("lbImg").addEventListener("pointermove", (e) => {
+  if (holdFrom && !held && Math.hypot(e.clientX - holdFrom[0], e.clientY - holdFrom[1]) > 12) {
+    clearTimeout(holdTimer);
+    holdFrom = null;
+  }
+});
+["pointerup", "pointercancel", "pointerleave"].forEach((type) => $("lbImg").addEventListener(type, () => {
+  clearTimeout(holdTimer);
+  holdFrom = null;
+  if (held) liveHold(false);
+}));
+// no "Save image" menu popping up on a long press
+$("lbImg").addEventListener("contextmenu", (e) => { if (lb.classList.contains("isLive")) e.preventDefault(); });
+// The "Hold to play" chip works the same (and with the keyboard)
+const liveHint = $("lbLiveHint");
+liveHint.addEventListener("pointerdown", (e) => { e.preventDefault(); liveHold(true); });
+["pointerup", "pointercancel", "pointerleave"].forEach((type) => liveHint.addEventListener(type, () => liveHold(false)));
+liveHint.addEventListener("keydown", (e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); liveHold(true); } });
+liveHint.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") liveHold(false); });
+liveHint.addEventListener("contextmenu", (e) => e.preventDefault());
+
 function closeLightbox() {
   if (history.state && history.state.lightbox) history.back();   // popstate hides it
   else hideLightbox();
@@ -1908,6 +2099,7 @@ lb.addEventListener("click", (e) => { if (e.target === lb || e.target === $("lbS
 let lastTap = 0;
 $("lbImg").addEventListener("pointerup", () => {
   const now = Date.now();
+  if (held) { lastTap = 0; return; }   // that was a hold to play
   if (now - lastTap < 320 && lbPhoto && !lbPhoto.blob) {
     toggleLike(lbPhoto, true);
     const heart = $("lbHeart");
@@ -1926,6 +2118,7 @@ $("lbStage").addEventListener("touchstart", (e) => {
 }, { passive: true });
 $("lbStage").addEventListener("touchend", (e) => {
   if (swipeX === null) return;
+  if (held) { swipeX = null; return; }
   const dx = e.changedTouches[0].clientX - swipeX;
   const dy = e.changedTouches[0].clientY - swipeY;
   swipeX = null;
@@ -1939,11 +2132,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeLightbox();
 });
 
-// Drive images can't be read by our page (CORS), so open the download link
-$("lbSave").addEventListener("click", () => {
-  if (lbPhoto.blob) savePhoto(lbPhoto.blob, "wedding-snap-" + lbPhoto.time + ".jpg");
-  else window.open(`https://drive.google.com/uc?export=download&id=${lbPhoto.id}`, "_blank");
-});
+$("lbSave").addEventListener("click", () => savePrint(lbPhoto));
 
 // Private → public: move it to the outbox (with a wish), then it sends
 $("lbShare").addEventListener("click", async () => {
@@ -1952,7 +2141,7 @@ $("lbShare").addEventListener("click", async () => {
   if (!wish) return;
   $("lbShare").disabled = true;
   try {
-    await queuePhoto(photo.blob, wish);
+    await queuePhoto(photo.blob, wish, photo.live);
     await Private.remove(photo.id);
     closeLightbox();
     toast("Sharing to the album…");
