@@ -748,32 +748,40 @@ async function runCountdown(runId) {
   return runId === state.runId;
 }
 
-// ---------- Live photos (every shot is also a tiny boomerang) ----------
-// During the last second of each countdown the camera quietly records a
-// few small frames; the click adds the snap itself. On the edit screen the
-// guest picks Still (a JPG, the default) or Live (a looping GIF of the
-// whole print, each photo playing forwards and back around its moment).
-const LIVE_FRAMES = 8;
-const LIVE_GAP = 110;          // ms between frames: 8 frames ≈ 0.9 s before the click
-const GIF_PIXELS = 400000;     // GIF size budget (width × height), keeps files a few MB at most
+// ---------- Live photos ----------
+// Like a real photobooth's "live view": while the countdown runs, the
+// camera quietly records what's happening (up to the last 4 seconds), and
+// the click adds the snap itself. On the edit screen the guest picks Still
+// (a JPG, the default) or Live: a GIF where every photo plays forwards
+// through its countdown, lands on the snap and holds there for a moment,
+// then starts again.
+const LIVE_SECONDS = 4;        // at most this much before each click
+const LIVE_GAP = 125;          // ms between frames (8 a second)
+const LIVE_HOLD = 1500;        // the snap stays on screen this long
+const GIF_PIXELS = 300000;     // GIF size budget (width × height)
+const GIF_MAX_BYTES = 7 * 1024 * 1024;   // the album takes up to 8 MB
 
 // How big the GIF is, and how big each live frame needs to be for it
-function gifSize(g = layout()) {
-  const scale = Math.min(1, Math.sqrt(GIF_PIXELS / (g.width * g.height)));
+function gifSize(g = layout(), budget = GIF_PIXELS) {
+  const scale = Math.min(1, Math.sqrt(budget / (g.width * g.height)));
   return { W: Math.round(g.width * scale), H: Math.round(g.height * scale), scale };
 }
 const liveLong = (s) => Math.min(640, Math.max(240, Math.round(Math.max(s.w, s.h) * gifSize().scale * 1.5)));
 
-// Starts with the countdown; records during its last second
+// Starts with the countdown; records its last few seconds, up to the click
 async function recordLive(runId) {
-  await wait(Math.max(0, state.timer - 1) * 1000 + 80);
+  const seconds = Math.min(state.timer, LIVE_SECONDS);
+  await wait((state.timer - seconds) * 1000);
   if (runId !== state.runId) return null;
   const long = liveLong(slotNow());
   const frames = [];
+  const count = Math.round((seconds * 1000) / LIVE_GAP) - 1;   // the snap is the last one
   document.body.classList.add("liveRec");
-  for (let k = 0; k < LIVE_FRAMES && runId === state.runId; k++) {
+  const t0 = performance.now();
+  for (let k = 0; k < count && runId === state.runId; k++) {
     frames.push(capture(long));
-    await wait(LIVE_GAP);
+    // keep to the beat even if a frame was slow to grab
+    await wait(Math.max(0, t0 + (k + 1) * LIVE_GAP - performance.now()));
   }
   document.body.classList.remove("liveRec");
   return runId === state.runId ? frames : null;
@@ -789,32 +797,38 @@ function shrink(canvas, long) {
   return c;
 }
 
-// 1 2 … 9 8 … 2, then round again
-const loopOf = (clip) => [...clip, ...clip.slice(1, -1).reverse()];
 const hasLive = () => state.clips.some(Boolean);
 const liveOn = () => state.motion && hasLive();
+// All photos play together; one that's shorter (e.g. retaken with a
+// shorter timer) waits on its snap until the others catch up
+const liveLength = () => Math.max(...state.clips.filter(Boolean).map((c) => c.length));
 
-// Which picture to draw in slot i: in Live, frame `state.frame` of its loop
+// Which picture to draw in slot i: in Live, frame `state.frame`
 function shotAt(i) {
   const clip = state.clips[i];
   if (!liveOn() || state.frame === null || !clip) return state.shots[i];
-  const seq = loopOf(clip);
-  return seq[state.frame % seq.length];
+  return clip[Math.min(state.frame, clip.length - 1)];
 }
 
-// The edit preview plays all the photos together in Live
+// The edit preview plays it like the GIF: forwards, hold on the snap, again
 let clipTimer = null;
 function playClip() {
   stopClip();
   if (!liveOn() || current !== "edit") return;
   state.frame = 0;
-  clipTimer = setInterval(() => {
-    state.frame++;
-    compose(preview);
-  }, LIVE_GAP);
+  const next = () => {
+    const last = state.frame >= liveLength() - 1;
+    clipTimer = setTimeout(() => {
+      state.frame = last ? 0 : state.frame + 1;
+      compose(preview);
+      next();
+    }, last ? LIVE_HOLD : LIVE_GAP);
+  };
+  compose(preview);
+  next();
 }
 function stopClip() {
-  clearInterval(clipTimer);
+  clearTimeout(clipTimer);
   clipTimer = null;
   state.frame = null;
 }
@@ -836,26 +850,45 @@ document.querySelectorAll(".motionOpt").forEach((o) => o.addEventListener("click
   setMotion(o.dataset.motion === "live");
 }));
 
-// The whole print, every frame, as a looping GIF
+// The whole print as a GIF: every photo plays forwards, holds on the
+// snap, then the GIF starts again. Made smaller if it would be too big
+// for the album.
 async function makeGif() {
   stopClip();
+  for (const budget of [GIF_PIXELS, GIF_PIXELS * 0.6, GIF_PIXELS * 0.35]) {
+    const blob = await encodeGif(budget);
+    if (blob.size <= GIF_MAX_BYTES) return blob;
+  }
+  return encodeGif(GIF_PIXELS * 0.2);
+}
+
+async function encodeGif(budget) {
   const g = layout();
-  const { W, H } = gifSize(g);
+  const { W, H } = gifSize(g, budget);
   const full = document.createElement("canvas");
   const small = document.createElement("canvas");
   small.width = W; small.height = H;
   const sctx = small.getContext("2d", { willReadFrequently: true });
   const gif = gifenc.GIFEncoder();
-  const frames = Math.max(...state.clips.filter(Boolean).map((c) => loopOf(c).length));
+  const frames = liveLength();
   let palette = null;
   for (let k = 0; k < frames; k++) {
     state.frame = k;
     compose(full);
     sctx.drawImage(full, 0, 0, W, H);
     const rgba = sctx.getImageData(0, 0, W, H).data;
-    // one set of colours for every frame, so the paper doesn't flicker
-    if (!palette) palette = gifenc.quantize(rgba, 256);
-    gif.writeFrame(gifenc.applyPalette(rgba, palette), W, H, { palette, delay: LIVE_GAP });
+    // one set of colours for every frame (taken from the snap), so the
+    // paper doesn't flicker
+    if (!palette) {
+      state.frame = frames - 1;
+      compose(full);
+      const snap = document.createElement("canvas");
+      snap.width = W; snap.height = H;
+      snap.getContext("2d").drawImage(full, 0, 0, W, H);
+      palette = gifenc.quantize(snap.getContext("2d").getImageData(0, 0, W, H).data, 256);
+      state.frame = k;
+    }
+    gif.writeFrame(gifenc.applyPalette(rgba, palette), W, H, { palette, delay: k === frames - 1 ? LIVE_HOLD : LIVE_GAP });
     await wait(0);   // let the page breathe
   }
   gif.finish();
@@ -878,7 +911,7 @@ $("shutterBtn").addEventListener("click", async () => {
   for (let k = 0; k < todo.length; k++) {
     state.current = todo[k];
     renderBooth();
-    const live = recordLive(runId);   // the moment before the click
+    const live = recordLive(runId);   // the live view during the countdown
     if (!(await runCountdown(runId))) return;
 
     const i = state.current;
@@ -895,7 +928,7 @@ $("shutterBtn").addEventListener("click", async () => {
 
   state.busy = false;
   Sound.duck(false);
-  await wait(150);   // the last live clip finishes
+  await wait(200);   // the last live recording finishes
   goToEdit();
 });
 

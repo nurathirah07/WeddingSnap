@@ -14,7 +14,7 @@ No app download, no login. Total cost: RM0.
 - **Gallery picks:** choose a photo from the phone instead of the camera
 - **Uploads:** photos go automatically to Google Drive. With a bad signal they wait on the phone and send by themselves later (never twice).
 - **Works offline:** after the first visit the app opens with no signal, and it can be added to the home screen like an app (`sw.js`, `manifest.webmanifest`)
-- **Live photos:** every shot also records the second before the click. On the edit screen guests choose **Still** (a photo, the default) or **Live** (every photo loops back and forth around its moment, saved as a GIF in the same print design)
+- **Live photos:** like a real photobooth's live view, every shot also records the countdown before the click (up to 4 seconds). On the edit screen guests choose **Still** (a photo, the default) or **Live**: a GIF of the whole print where every photo plays forwards through its countdown, lands on the snap, holds for a moment and starts again
 - **Stickers:** "Tahniah!", "Selamat Pengantin Baru", a songkok, crown, heart shades… guests drag, pinch to resize and turn
 - **Likes:** guests ♥ photos in the gallery (or double-tap in the viewer); favourites come up more on the slideshow
 - **Wishes (ucapan):** guests can add their name and a short wish when they share a photo
@@ -148,7 +148,7 @@ Everything has been tested in Chrome on a computer; phones behave a little diffe
 1. **Open the link** from the table card QR code. The welcome cover shows, and tapping it starts the music.
 2. **Music:** leave it for 2 minutes - songs should change smoothly. Lock the phone and unlock it: the music should carry on (or start again on the next tap).
 3. **Camera:** take a 4-Cut strip. The camera permission question should appear the first time. Try the front and back cameras.
-4. **Live:** take a strip, switch the edit screen to **Live** - every photo should loop. Share it: it should keep moving on the result screen and in the gallery.
+4. **Live:** take a strip, switch the edit screen to **Live** - every photo should play its countdown and stop on the snap. Share it: it should keep playing on the result screen and in the gallery.
 5. **Stickers:** add two, drag them, pinch to resize and turn, remove one with ×.
 6. **Share with no signal:** turn on Airplane mode, share a photo with a wish. It should say "Saved on your phone". Turn Airplane mode off: within a few seconds "Your photo reached the album ✓".
 7. **Offline:** with Airplane mode on, close the browser tab and open the link again - the app should still open.
