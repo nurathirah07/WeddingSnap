@@ -114,7 +114,7 @@ async function next() {
   }
   loading = true;
   try {
-    // a boomerang: the full GIF, so it moves
+    // a live photo: the full GIF, so it moves
     const img = await loadImage(choice.photo.gif ? `https://drive.google.com/uc?export=view&id=${choice.photo.id}` : thumbUrl(choice.photo.id, 1600));
     $("showEmpty").classList.add("hidden");
     show(choice.photo, img, choice.isNew);

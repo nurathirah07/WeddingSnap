@@ -14,7 +14,7 @@ No app download, no login. Total cost: RM0.
 - **Gallery picks:** choose a photo from the phone instead of the camera
 - **Uploads:** photos go automatically to Google Drive. With a bad signal they wait on the phone and send by themselves later (never twice).
 - **Works offline:** after the first visit the app opens with no signal, and it can be added to the home screen like an app (`sw.js`, `manifest.webmanifest`)
-- **Boomerang:** a short clip that plays back and forth, saved as a looping GIF in the same print design
+- **Live photos:** every shot also records the second before the click. On the edit screen guests choose **Still** (a photo, the default) or **Live** (every photo loops back and forth around its moment, saved as a GIF in the same print design)
 - **Stickers:** "Tahniah!", "Selamat Pengantin Baru", a songkok, crown, heart shades… guests drag, pinch to resize and turn
 - **Likes:** guests ♥ photos in the gallery (or double-tap in the viewer); favourites come up more on the slideshow
 - **Wishes (ucapan):** guests can add their name and a short wish when they share a photo
@@ -40,7 +40,7 @@ js/filters.js        filter maths (works on iPhone too)
 js/audio.js          music + sound effects
 js/effects.js        effects on the print (sparkles, hearts…)
 js/stickers.js       stickers guests place on the print
-js/vendor/           qrcode.js (QR codes), gifenc.js (boomerang GIFs) - both MIT
+js/vendor/           qrcode.js (QR codes), gifenc.js (live-photo GIFs) - both MIT
 sw.js                offline support (keeps the app's files on the phone)
 manifest.webmanifest + icons/   "add to home screen"
 css/fonts/           wedding fonts: .woff2 (small, for the web) + .otf originals
@@ -148,12 +148,12 @@ Everything has been tested in Chrome on a computer; phones behave a little diffe
 1. **Open the link** from the table card QR code. The welcome cover shows, and tapping it starts the music.
 2. **Music:** leave it for 2 minutes - songs should change smoothly. Lock the phone and unlock it: the music should carry on (or start again on the next tap).
 3. **Camera:** take a 4-Cut strip. The camera permission question should appear the first time. Try the front and back cameras.
-4. **Boomerang:** record one. It should loop on the edit screen and on the result screen.
+4. **Live:** take a strip, switch the edit screen to **Live** - every photo should loop. Share it: it should keep moving on the result screen and in the gallery.
 5. **Stickers:** add two, drag them, pinch to resize and turn, remove one with ×.
 6. **Share with no signal:** turn on Airplane mode, share a photo with a wish. It should say "Saved on your phone". Turn Airplane mode off: within a few seconds "Your photo reached the album ✓".
 7. **Offline:** with Airplane mode on, close the browser tab and open the link again - the app should still open.
 8. **Likes:** ♥ a photo in the gallery; check the number goes up in admin.
-9. **Save to phone:** a photo and a boomerang both save to the camera roll / gallery.
+9. **Save to phone:** a Still and a Live print both save to the camera roll / gallery.
 10. **Add to home screen** (Safari: Share → Add to Home Screen; Chrome: ⋮ → Install app), then open it from the icon.
 11. **Slideshow** on the actual TV or projector: new photos appear within a few seconds; the QR code in the corner scans from across the room.
 12. **Admin:** open the album with your admin key, hide a photo (it leaves the slideshow), then **Download all photos**.

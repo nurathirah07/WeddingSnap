@@ -733,7 +733,7 @@ body.musicOn .wave { opacity: 1; }
 #preview {
   max-width: 100%;
   /* whatever height is left after the title, tabs and Done button */
-  max-height: clamp(240px, calc(100dvh - 450px), 62vh);
+  max-height: clamp(220px, calc(100dvh - 500px), 60vh);
   border-radius: 4px;
   box-shadow: 0 20px 44px rgba(74, 40, 48, 0.24), 0 2px 6px rgba(42, 31, 34, 0.1);
   cursor: pointer;
@@ -875,7 +875,7 @@ body.musicOn .wave { opacity: 1; }
 }
 #resultImg {
   max-width: 100%;
-  max-height: 56vh;
+  max-height: 50vh;
   box-shadow: 0 16px 34px rgba(74, 40, 48, 0.24);
   animation: print 1.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
@@ -1369,13 +1369,65 @@ body:has(#lightbox:not(.hidden)) .musicBtn { display: none; }
   100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
 }
 
-/* ---------- Boomerang ---------- */
-/* recording: a pulsing red edge round the camera */
-#viewfinder.rec { box-shadow: 0 0 0 4px #e5484d, 0 0 30px rgba(229, 72, 77, 0.6); animation: recPulse 0.9s ease-in-out infinite; }
-@keyframes recPulse { 50% { box-shadow: 0 0 0 4px rgba(229, 72, 77, 0.45), 0 0 14px rgba(229, 72, 77, 0.25); } }
-#countdown.rec { background: none; }
-#countdown.rec small::before { content: "● "; color: #e5484d; }
-/* a boomerang tile: loop arrows instead of the "open" arrows */
+/* ---------- Live photos ---------- */
+/* booth: a small LIVE tag while the moment before the click is recorded */
+.liveDot {
+  position: absolute;
+  top: 12px; left: 12px;
+  z-index: 3;
+  padding: 4px 10px 4px 22px;
+  border-radius: 999px;
+  background: rgba(17, 14, 15, 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.liveDot::before {
+  content: "";
+  position: absolute;
+  left: 9px; top: 50%;
+  width: 7px; height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: #ffcc33;
+  animation: pulse 0.9s ease-in-out infinite;
+}
+body.liveRec .liveDot { opacity: 1; }
+
+/* edit: Still / Live switch */
+.motionToggle {
+  display: flex;
+  gap: 2px;
+  margin: 12px auto 0;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(42, 31, 34, 0.06);
+}
+.motionToggle.hidden { display: none; }
+.motionOpt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 7px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  transition: background 0.2s, color 0.2s;
+}
+.motionOpt.selected { background: var(--ink); color: var(--bg); }
+/* the Live icon: a ring with a dot, like a live photo */
+.liveIcon { width: 12px; height: 12px; border-radius: 50%; border: 1.5px dashed currentColor; position: relative; }
+.liveIcon::after { content: ""; position: absolute; inset: 2.5px; border-radius: 50%; background: currentColor; }
+.motionOpt.selected .liveIcon { animation: spin 3s linear infinite; }
+.motionToggle + .tip { margin-top: 8px; }
+
+/* a live photo (GIF) tile: loop arrows instead of the "open" arrows */
 .tile.gif::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12a8 8 0 0 1 13.7-5.7M20 12a8 8 0 0 1-13.7 5.7'/%3E%3Cpath d='M18 2v4.5h-4.5M6 22v-4.5h4.5'/%3E%3C/svg%3E");
 }

@@ -119,6 +119,7 @@
         <video id="camera" autoplay playsinline muted></video>
         <div id="countdown"><span id="countNum"></span><small id="countHint">Get ready</small></div>
         <div id="flash"></div>
+        <span class="liveDot" aria-hidden="true">LIVE</span>
         <div id="camError" class="hidden">
           <p id="camErrTitle">Camera not available</p>
           <small id="camErrHelp"></small>
@@ -159,6 +160,11 @@
         <!-- stickers being placed: drag, pinch, or use the corner handle -->
         <div class="stickerLayer" id="stickerLayer"></div>
       </div>
+    </div>
+    <!-- Still (photo) or Live (the moment before the click, looping) -->
+    <div class="motionToggle hidden" id="motionToggle" role="radiogroup" aria-label="Still photo or live loop">
+      <button class="motionOpt selected" data-motion="still" role="radio" aria-checked="true">Still</button>
+      <button class="motionOpt" data-motion="live" role="radio" aria-checked="false"><i class="liveIcon" aria-hidden="true"></i>Live</button>
     </div>
     <p class="tip" id="editTip">Tap a photo to retake it</p>
 

@@ -497,7 +497,7 @@ window.addEventListener("songchange", (e) => {
 // Layout cards, grouped (Strips / Single photo / Grids & collage), each
 // group 3 across. They flow in one after another; the last one picked is
 // highlighted when the guest comes back.
-const LAYOUT_GROUPS = ["Strips", "Single photo", "Boomerang", "Grids & collage"];
+const LAYOUT_GROUPS = ["Strips", "Single photo", "Grids & collage"];
 
 function buildLayoutCards() {
   const grid = $("layoutGrid");
@@ -551,7 +551,9 @@ function chooseLayout(id) {
 }
 
 function resetShots() {
-  state.clip = null;
+  state.clips = layout().slots.map(() => null);   // the live moment of each photo
+  state.motion = false;                            // Still by default
+  state.frame = null;
   state.stickers = [];
   state.shots = layout().slots.map(() => null);
   state.current = 0;
@@ -651,7 +653,6 @@ function renderBooth() {
   const total = state.shots.length;
   $("boothTitle").textContent = state.retakeOne
     ? "Retake photo " + (state.current + 1)
-    : layout().motion ? "Boomerang"
     : total === 1 ? "Strike a pose" : "Shot " + (state.current + 1) + " of " + total;
 
   const dots = $("slotDots");
@@ -678,7 +679,6 @@ function renderBooth() {
   const left = state.shots.filter((s) => !s).length;
   $("boothHint").textContent = state.busy ? ""
     : state.retakeOne ? `Tap the shutter to retake this photo (${state.timer}s countdown)`
-    : layout().motion ? `Tap the shutter: ${state.timer}s countdown, then keep moving for a second`
     : left > 1 ? `Tap the shutter: ${left} photos, ${state.timer}s countdown before each`
     : `Tap the shutter: ${state.timer}s countdown`;
 }
@@ -748,72 +748,118 @@ async function runCountdown(runId) {
   return runId === state.runId;
 }
 
-// ---------- Boomerang ----------
-// A burst of small frames (small = light on memory), played forwards then
-// backwards on a loop
-const CLIP_FRAMES = 12;
-const CLIP_GAP = 110;   // ms between frames: 12 frames ≈ 1.3 s
+// ---------- Live photos (every shot is also a tiny boomerang) ----------
+// During the last second of each countdown the camera quietly records a
+// few small frames; the click adds the snap itself. On the edit screen the
+// guest picks Still (a JPG, the default) or Live (a looping GIF of the
+// whole print, each photo playing forwards and back around its moment).
+const LIVE_FRAMES = 8;
+const LIVE_GAP = 110;          // ms between frames: 8 frames ≈ 0.9 s before the click
+const GIF_PIXELS = 400000;     // GIF size budget (width × height), keeps files a few MB at most
 
-async function recordClip(runId) {
-  $("viewfinder").classList.add("rec");
-  $("countdown").classList.add("show", "rec");
-  $("countNum").textContent = "";
-  $("countHint").textContent = "Keep moving!";
+// How big the GIF is, and how big each live frame needs to be for it
+function gifSize(g = layout()) {
+  const scale = Math.min(1, Math.sqrt(GIF_PIXELS / (g.width * g.height)));
+  return { W: Math.round(g.width * scale), H: Math.round(g.height * scale), scale };
+}
+const liveLong = (s) => Math.min(640, Math.max(240, Math.round(Math.max(s.w, s.h) * gifSize().scale * 1.5)));
+
+// Starts with the countdown; records during its last second
+async function recordLive(runId) {
+  await wait(Math.max(0, state.timer - 1) * 1000 + 80);
+  if (runId !== state.runId) return null;
+  const long = liveLong(slotNow());
   const frames = [];
-  for (let i = 0; i < CLIP_FRAMES; i++) {
-    if (runId !== state.runId) break;
-    frames.push(capture(720));
-    await wait(CLIP_GAP);
+  document.body.classList.add("liveRec");
+  for (let k = 0; k < LIVE_FRAMES && runId === state.runId; k++) {
+    frames.push(capture(long));
+    await wait(LIVE_GAP);
   }
-  $("viewfinder").classList.remove("rec");
-  $("countdown").classList.remove("show", "rec");
+  document.body.classList.remove("liveRec");
   return runId === state.runId ? frames : null;
 }
 
-// 1 2 3 … 12 11 … 2, then round again
-const clipSequence = () => [...state.clip, ...state.clip.slice(1, -1).reverse()];
+// The snap, made small to end the clip
+function shrink(canvas, long) {
+  const k = long / Math.max(canvas.width, canvas.height);
+  const c = document.createElement("canvas");
+  c.width = Math.round(canvas.width * k);
+  c.height = Math.round(canvas.height * k);
+  c.getContext("2d").drawImage(canvas, 0, 0, c.width, c.height);
+  return c;
+}
 
-// The edit preview plays the clip while the guest picks colours, effects…
+// 1 2 … 9 8 … 2, then round again
+const loopOf = (clip) => [...clip, ...clip.slice(1, -1).reverse()];
+const hasLive = () => state.clips.some(Boolean);
+const liveOn = () => state.motion && hasLive();
+
+// Which picture to draw in slot i: in Live, frame `state.frame` of its loop
+function shotAt(i) {
+  const clip = state.clips[i];
+  if (!liveOn() || state.frame === null || !clip) return state.shots[i];
+  const seq = loopOf(clip);
+  return seq[state.frame % seq.length];
+}
+
+// The edit preview plays all the photos together in Live
 let clipTimer = null;
 function playClip() {
   stopClip();
-  if (!state.clip) return;
-  const seq = clipSequence();
-  let k = 0;
+  if (!liveOn() || current !== "edit") return;
+  state.frame = 0;
   clipTimer = setInterval(() => {
-    state.shots[0] = seq[k++ % seq.length];
+    state.frame++;
     compose(preview);
-  }, CLIP_GAP);
+  }, LIVE_GAP);
 }
 function stopClip() {
   clearInterval(clipTimer);
   clipTimer = null;
-  if (state.clip) state.shots[0] = state.clip[0];
+  state.frame = null;
 }
 
-// The whole print, every frame, as a looping GIF (540 px wide)
+// Still / Live switch on the edit screen
+function setMotion(on) {
+  state.motion = on;
+  document.querySelectorAll(".motionOpt").forEach((o) => {
+    const sel = (o.dataset.motion === "live") === on;
+    o.classList.toggle("selected", sel);
+    o.setAttribute("aria-checked", sel);
+  });
+  $("doneBtn").dataset.live = on ? "1" : "";
+  if (on) playClip();
+  else { stopClip(); compose(preview); }
+}
+document.querySelectorAll(".motionOpt").forEach((o) => o.addEventListener("click", () => {
+  tick();
+  setMotion(o.dataset.motion === "live");
+}));
+
+// The whole print, every frame, as a looping GIF
 async function makeGif() {
   stopClip();
   const g = layout();
-  const W = 540, H = Math.round(g.height * 540 / g.width);
+  const { W, H } = gifSize(g);
   const full = document.createElement("canvas");
   const small = document.createElement("canvas");
   small.width = W; small.height = H;
   const sctx = small.getContext("2d", { willReadFrequently: true });
   const gif = gifenc.GIFEncoder();
+  const frames = Math.max(...state.clips.filter(Boolean).map((c) => loopOf(c).length));
   let palette = null;
-  for (const frame of clipSequence()) {
-    state.shots[0] = frame;
+  for (let k = 0; k < frames; k++) {
+    state.frame = k;
     compose(full);
     sctx.drawImage(full, 0, 0, W, H);
     const rgba = sctx.getImageData(0, 0, W, H).data;
     // one set of colours for every frame, so the paper doesn't flicker
     if (!palette) palette = gifenc.quantize(rgba, 256);
-    gif.writeFrame(gifenc.applyPalette(rgba, palette), W, H, { palette, delay: CLIP_GAP });
+    gif.writeFrame(gifenc.applyPalette(rgba, palette), W, H, { palette, delay: LIVE_GAP });
     await wait(0);   // let the page breathe
   }
   gif.finish();
-  state.shots[0] = state.clip[0];
+  state.frame = null;
   return new Blob([gif.bytes()], { type: "image/gif" });
 }
 
@@ -825,21 +871,6 @@ $("shutterBtn").addEventListener("click", async () => {
   Sound.duck(true);
   renderBooth();
 
-  // Boomerang: one countdown, then a burst of frames
-  if (layout().motion) {
-    if (!(await runCountdown(runId))) return;
-    const frames = await recordClip(runId);
-    if (!frames) return;
-    Sound.shutter();
-    flash();
-    state.clip = frames;
-    state.shots[0] = frames[0];
-    state.busy = false;
-    Sound.duck(false);
-    goToEdit();
-    return;
-  }
-
   const todo = state.retakeOne
     ? [state.current]
     : state.shots.map((s, i) => (s ? null : i)).filter((i) => i !== null);
@@ -847,10 +878,13 @@ $("shutterBtn").addEventListener("click", async () => {
   for (let k = 0; k < todo.length; k++) {
     state.current = todo[k];
     renderBooth();
+    const live = recordLive(runId);   // the moment before the click
     if (!(await runCountdown(runId))) return;
 
-    state.shots[state.current] = capture();
+    const i = state.current;
+    state.shots[i] = capture();
     Sound.shutter();
+    live.then((frames) => { if (frames) state.clips[i] = [...frames, shrink(state.shots[i], liveLong(layout().slots[i]))]; });
     flash();
     navigator.vibrate?.(25);
     renderBooth();
@@ -861,6 +895,7 @@ $("shutterBtn").addEventListener("click", async () => {
 
   state.busy = false;
   Sound.duck(false);
+  await wait(150);   // the last live clip finishes
   goToEdit();
 });
 
@@ -879,7 +914,7 @@ $("pickFile").addEventListener("change", (e) => {
     URL.revokeObjectURL(img.src);
 
     state.shots[state.current] = shot;
-    state.clip = null;   // a picked photo can't move: saved as a still
+    state.clips[state.current] = null;   // a picked photo has no moment: stays still in Live
     const nextEmpty = state.shots.findIndex((x) => !x);
     if (state.retakeOne || nextEmpty === -1) goToEdit();
     else { state.current = nextEmpty; renderBooth(); }
@@ -964,7 +999,7 @@ function compose(canvas, f = filter()) {
 
 function drawPhotos(ctx, g, f) {
   g.slots.forEach((slot, i) => {
-    const shot = state.shots[i];
+    const shot = shotAt(i);   // the still, or a frame of its live moment
     ctx.save();
     roundRect(ctx, slot.x, slot.y, slot.w, slot.h, slot.r || 0);
     ctx.clip();
@@ -1044,7 +1079,9 @@ async function goToEdit() {
   buildFilterChips();
   buildStickerChips();
   renderStickers();
-  compose(preview);
+  // Still / Live: only offered when the photos have a live moment
+  $("motionToggle").classList.toggle("hidden", !hasLive());
+  setMotion(state.motion && hasLive());
   show("edit");
   playClip();
 }
@@ -1322,9 +1359,9 @@ $("doneBtn").addEventListener("click", async () => {
   stopCamera();
 
   let blob, dataUrl;
-  if (state.clip) {
+  if (liveOn()) {
     const label = $("doneBtn").textContent;
-    $("doneBtn").textContent = "Making your boomerang…";
+    $("doneBtn").textContent = "Making your live photo…";
     blob = await makeGif();
     dataUrl = await blobToDataUrl(blob);
     $("doneBtn").textContent = label;
@@ -1562,7 +1599,7 @@ async function upload(wish = {}) {
 
 // Phones: open the share sheet ("Save Image"). Computers: normal download.
 async function savePhoto(blob, name) {
-  if (blob.type === "image/gif") name = name.replace(/\.jpg$/, ".gif");   // boomerang
+  if (blob.type === "image/gif") name = name.replace(/\.jpg$/, ".gif");   // live photo
   const file = new File([blob], name, { type: blob.type || "image/jpeg" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file] }); return; }
@@ -1593,7 +1630,7 @@ let galleryList = [];     // the photos showing right now (Everyone or Mine)
 let galleryTab = "all";
 const thumbUrl = (id, size) => `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
 const photoSrc = (p, size) => p.url || thumbUrl(p.id, size);
-// the full GIF, so a boomerang moves (Drive's thumbnails are stills)
+// the full GIF, so a live photo moves (Drive's thumbnails are stills)
 const gifUrl = (id) => `https://drive.google.com/uc?export=view&id=${id}`;
 
 // Photos stored on this phone (private + waiting to send), shown under Mine
