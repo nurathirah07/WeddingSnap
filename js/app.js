@@ -12,7 +12,6 @@ const state = {
   layoutId: "strip4",
   colourId: "white",   // frame colour (COLOURS in config.js)
   effectId: "none",    // sparkles, hearts... (js/effects.js)
-  stickers: [],        // placed stickers: { id, type, x, y (0-1 of the print), h (height, 0-1 of its width), r (turn) }
   filterId: "none",
   shots:    [],      // one raw (unfiltered) canvas per slot, null = empty
   current:  0,       // which slot we're filling
@@ -555,7 +554,6 @@ function resetShots() {
   state.clips = layout().slots.map(() => null);   // the live moment of each photo
   state.motion = false;                            // Still by default
   state.frame = null;
-  state.stickers = [];
   state.shots = layout().slots.map(() => null);
   state.current = 0;
   state.retakeOne = false;
@@ -1022,13 +1020,6 @@ function compose(canvas, f = filter()) {
   drawPhotos(ctx, g, f);
   Effects.apply(ctx, g, state.effectId, c, state.layoutId);
   drawFooter(ctx, g, c);
-  // stickers on top of everything (on the preview they're the layer above it)
-  if (canvas !== preview) {
-    state.stickers.forEach((st) => {
-      const type = STICKERS.find((t) => t.id === st.type);
-      if (type) drawSticker(ctx, type, st.x * g.width, st.y * g.height, st.h * g.width, st.r);
-    });
-  }
 }
 
 function drawPhotos(ctx, g, f) {
@@ -1111,8 +1102,6 @@ async function goToEdit() {
   buildColourChips();
   buildEffectChips();
   buildFilterChips();
-  buildStickerChips();
-  renderStickers();
   // Still / Live: only offered when the photos have a live moment
   $("motionToggle").classList.toggle("hidden", !hasLive());
   setMotion(state.motion && hasLive());
@@ -1132,11 +1121,6 @@ document.querySelectorAll(".editTab").forEach((tab) => tab.addEventListener("cli
     t.setAttribute("aria-selected", t === tab);
   });
   document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== tab.dataset.pane));
-  const stickering = tab.dataset.pane === "sticker";
-  document.body.classList.toggle("stickering", stickering);
-  if (!stickering) selectSticker(null);
-  $("editTip").textContent = stickering ? "Drag to move · pinch or use the corner to resize and turn"
-                                        : "Tap a photo to retake it";
 }));
 
 function selectChip(wrap, chip) {
@@ -1196,135 +1180,6 @@ function buildEffectChips() {
   });
 }
 
-// ---------- Stickers ----------
-const stickerPics = {};   // sticker type → picture for the drag layer
-const stickerPic = (type) => stickerPics[type.id] || (stickerPics[type.id] = stickerImage(type, 260).toDataURL());
-let selectedSticker = null;
-
-function buildStickerChips() {
-  const wrap = $("stickerChips");
-  if (wrap.childElementCount) return;   // the same every time
-  STICKERS.forEach((type, i) => {
-    const chip = document.createElement("button");
-    chip.className = "swatch stickerChip";
-    flowIn(chip, i);
-    const thumb = document.createElement("span");
-    thumb.style.backgroundImage = `url("${stickerPic(type)}")`;
-    chip.appendChild(thumb);
-    chip.insertAdjacentHTML("beforeend", `<small>${type.name}</small>`);
-    chip.addEventListener("click", () => {
-      tick();
-      const st = { id: randomToken(), type: type.id, x: 0.5, y: 0.32, h: type.aspect > 2 ? 0.12 : 0.2, r: (Math.random() - 0.5) * 0.3 };
-      state.stickers.push(st);
-      renderStickers();
-      selectSticker(st);
-    });
-    wrap.appendChild(chip);
-  });
-}
-
-// The drag-around layer over the preview
-function renderStickers() {
-  const layer = $("stickerLayer");
-  layer.replaceChildren();
-  state.stickers.forEach((st) => {
-    const type = STICKERS.find((t) => t.id === st.type);
-    if (!type) return;
-    const el = document.createElement("div");
-    el.className = "sticker" + (st === selectedSticker ? " selected" : "");
-    el.dataset.id = st.id;
-    const img = document.createElement("img");
-    img.src = stickerPic(type);
-    img.alt = type.name;
-    img.draggable = false;
-    const del = document.createElement("button");
-    del.className = "stickerDel";
-    del.setAttribute("aria-label", "Remove sticker");
-    del.textContent = "×";
-    del.addEventListener("click", (e) => {
-      e.stopPropagation();
-      state.stickers = state.stickers.filter((s) => s !== st);
-      selectedSticker = null;
-      renderStickers();
-    });
-    const handle = document.createElement("span");
-    handle.className = "stickerHandle";
-    el.append(img, del, handle);
-    placeSticker(el, st);
-    stickerGestures(el, st, type);
-    layer.appendChild(el);
-  });
-}
-
-function placeSticker(el, st) {
-  const type = STICKERS.find((t) => t.id === st.type);
-  // the picture has a margin of 12% of its height all round
-  el.style.left = st.x * 100 + "%";
-  el.style.top = st.y * 100 + "%";
-  el.style.width = st.h * (type.aspect + 0.24) * 100 + "%";
-  el.style.transform = `translate(-50%, -50%) rotate(${st.r}rad)`;
-}
-
-function selectSticker(st) {
-  selectedSticker = st;
-  document.querySelectorAll(".sticker").forEach((el) => el.classList.toggle("selected", !!st && el.dataset.id === st.id));
-}
-
-// Drag with one finger; pinch / twist with two; or drag the corner handle
-function stickerGestures(el, st, type) {
-  const pts = new Map();
-  let start = null;
-  const layerBox = () => $("stickerLayer").getBoundingClientRect();
-  const snapshot = (handle) => {
-    const box = layerBox(), list = [...pts.values()];
-    const centre = { x: box.left + st.x * box.width, y: box.top + st.y * box.height };
-    const a = list[0], b = list[1] || centre;   // handle: measure from the sticker's centre
-    return { box, x: st.x, y: st.y, h: st.h, r: st.r, handle, a: { ...a },
-             dist: Math.hypot(b.x - a.x, b.y - a.y) || 1, ang: Math.atan2(b.y - a.y, b.x - a.x),
-             mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
-  };
-  el.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".stickerDel")) return;
-    e.preventDefault();
-    el.setPointerCapture(e.pointerId);
-    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    selectSticker(st);
-    start = snapshot(e.target.closest(".stickerHandle") || pts.size === 2 ? (pts.size === 2 ? "pinch" : "handle") : "drag");
-  });
-  el.addEventListener("pointermove", (e) => {
-    if (!pts.has(e.pointerId) || !start) return;
-    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    const now = snapshot(start.handle);
-    if (start.handle === "drag") {
-      st.x = start.x + (now.a.x - start.a.x) / start.box.width;
-      st.y = start.y + (now.a.y - start.a.y) / start.box.height;
-    } else {
-      st.h = Math.min(1.2, Math.max(0.05, start.h * now.dist / start.dist));
-      st.r = start.r + (now.ang - start.ang);
-      if (start.handle === "pinch") {
-        st.x = start.x + (now.mid.x - start.mid.x) / start.box.width;
-        st.y = start.y + (now.mid.y - start.mid.y) / start.box.height;
-      }
-    }
-    st.x = Math.min(1.05, Math.max(-0.05, st.x));
-    st.y = Math.min(1.05, Math.max(-0.05, st.y));
-    placeSticker(el, st);
-  });
-  const end = (e) => {
-    pts.delete(e.pointerId);
-    start = pts.size ? snapshot(pts.size === 2 ? "pinch" : "drag") : null;
-  };
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", end);
-  // computers: scroll to resize, Shift + scroll to turn
-  el.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    if (e.shiftKey) st.r += e.deltaY * 0.003;
-    else st.h = Math.min(1.2, Math.max(0.05, st.h * (1 - e.deltaY * 0.001)));
-    placeSticker(el, st);
-  }, { passive: false });
-}
-
 // Filter chips show a tiny preview of photo 1 with that filter
 function buildFilterChips() {
   const wrap = $("filterChips");
@@ -1351,7 +1206,6 @@ function buildFilterChips() {
 
 // Tap a photo on the preview → retake just that one
 preview.addEventListener("click", (e) => {
-  if (document.body.classList.contains("stickering") || selectedSticker) { selectSticker(null); return; }
   const rect = preview.getBoundingClientRect();
   const x = (e.clientX - rect.left) * preview.width / rect.width;
   const y = (e.clientY - rect.top) * preview.height / rect.height;

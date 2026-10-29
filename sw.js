@@ -23,7 +23,6 @@ const CORE = [
   "js/config.js" + VERSION,
   "js/filters.js" + VERSION,
   "js/effects.js" + VERSION,
-  "js/stickers.js" + VERSION,
   "js/vendor/gifenc.js" + VERSION,
   "js/audio.js" + VERSION,
   "js/app.js" + VERSION,

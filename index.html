@@ -157,8 +157,6 @@
     <div class="previewWrap">
       <div class="previewBox">
         <canvas id="preview"></canvas>
-        <!-- stickers being placed: drag, pinch, or use the corner handle -->
-        <div class="stickerLayer" id="stickerLayer"></div>
       </div>
     </div>
     <!-- Still (photo) or Live (the moment before the click, looping) -->
@@ -174,12 +172,10 @@
         <button class="editTab active" role="tab" aria-selected="true" data-pane="colour">Colour</button>
         <button class="editTab" role="tab" aria-selected="false" data-pane="effect">Effects</button>
         <button class="editTab" role="tab" aria-selected="false" data-pane="filter">Filter</button>
-        <button class="editTab" role="tab" aria-selected="false" data-pane="sticker">Stickers</button>
       </div>
       <div class="chips pane" id="colourChips" data-pane="colour"></div>
       <div class="chips pane hidden" id="effectChips" data-pane="effect"></div>
       <div class="chips pane hidden" id="filterChips" data-pane="filter"></div>
-      <div class="chips pane hidden" id="stickerChips" data-pane="sticker"></div>
     </div>
 
     <div class="bottomBar">
@@ -313,7 +309,6 @@
   <script src="js/config.js?v=dev"></script>
   <script src="js/filters.js?v=dev"></script>
   <script src="js/effects.js?v=dev"></script>
-  <script src="js/stickers.js?v=dev"></script>
   <script src="js/vendor/gifenc.js?v=dev"></script>
   <script src="js/audio.js?v=dev"></script>
   <script src="js/app.js?v=dev"></script>
