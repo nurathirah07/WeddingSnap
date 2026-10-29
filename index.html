@@ -5,13 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#f8f1ee">
   <title>Wedding Snap · Photobooth</title>
+  <!-- Install on the home screen + open without signal (sw.js) -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Wedding Snap">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='%232a1f22'/><circle cx='16' cy='16' r='6' fill='%23c27c88'/><circle cx='16' cy='16' r='1.5' fill='%23f8f1ee'/></svg>">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="preload" href="css/fonts/Runiga.otf" as="font" type="font/otf" crossorigin>
-  <link rel="preload" href="css/fonts/Runethia.otf" as="font" type="font/otf" crossorigin>
+  <link rel="preload" href="css/fonts/Runiga.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="css/fonts/Runethia.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/style.css?v=dev">
 </head>
 <body>
@@ -147,9 +154,13 @@
     </header>
 
     <div class="previewWrap">
-      <canvas id="preview"></canvas>
+      <div class="previewBox">
+        <canvas id="preview"></canvas>
+        <!-- stickers being placed: drag, pinch, or use the corner handle -->
+        <div class="stickerLayer" id="stickerLayer"></div>
+      </div>
     </div>
-    <p class="tip">Tap a photo to retake it</p>
+    <p class="tip" id="editTip">Tap a photo to retake it</p>
 
     <!-- Every print has the same design: guests choose its colour, an effect and a filter -->
     <div class="panel">
@@ -157,10 +168,12 @@
         <button class="editTab active" role="tab" aria-selected="true" data-pane="colour">Colour</button>
         <button class="editTab" role="tab" aria-selected="false" data-pane="effect">Effects</button>
         <button class="editTab" role="tab" aria-selected="false" data-pane="filter">Filter</button>
+        <button class="editTab" role="tab" aria-selected="false" data-pane="sticker">Stickers</button>
       </div>
       <div class="chips pane" id="colourChips" data-pane="colour"></div>
       <div class="chips pane hidden" id="effectChips" data-pane="effect"></div>
       <div class="chips pane hidden" id="filterChips" data-pane="filter"></div>
+      <div class="chips pane hidden" id="stickerChips" data-pane="sticker"></div>
     </div>
 
     <div class="bottomBar">
@@ -222,10 +235,12 @@
     <div class="lbStage" id="lbStage">
       <button class="lbNav" id="lbPrev" aria-label="Previous photo"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
       <img id="lbImg" alt="">
+      <span class="lbHeart" id="lbHeart" aria-hidden="true">♥</span>
       <button class="lbNav" id="lbNext" aria-label="Next photo"><svg class="ic" aria-hidden="true"><use href="#i-next"/></svg></button>
     </div>
     <p class="lbWish hidden" id="lbWish"></p>
     <div class="row">
+      <span id="lbLikeSlot"></span>
       <button class="btn primary" id="lbSave">Save</button>
       <button class="btn ghost light hidden" id="lbShare">Share to album</button>
       <button class="btn danger hidden" id="lbDelete">Delete</button>
@@ -265,6 +280,8 @@
   <script src="js/config.js?v=dev"></script>
   <script src="js/filters.js?v=dev"></script>
   <script src="js/effects.js?v=dev"></script>
+  <script src="js/stickers.js?v=dev"></script>
+  <script src="js/vendor/gifenc.js?v=dev"></script>
   <script src="js/audio.js?v=dev"></script>
   <script src="js/app.js?v=dev"></script>
 </body>

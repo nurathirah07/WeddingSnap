@@ -81,6 +81,9 @@ const LAYOUTS = {
       { x: 60,  y: 800, w: 470, h: 470 },
       { x: 550, y: 800, w: 470, h: 470 },
     ] },
+  // a short looping clip (saved as a GIF) instead of a photo
+  boomerang: { name: "Boomerang", group: "Boomerang", hint: "looping clip", motion: true,
+    ...makeGrid({ width: 900,  cols: 1, rows: 1, slotW: 800, slotH: 960,  margin: 50, gap: 0,  footer: 270 }) },
   grid6:    { name: "6-Grid", group: "Grids & collage", hint: "2 × 3 grid",
     ...makeGrid({ width: 1080, cols: 2, rows: 3, slotW: 475, slotH: 475,  margin: 50, gap: 30, footer: 260 }) },
 };

@@ -12,6 +12,7 @@ const state = {
   layoutId: "strip4",
   colourId: "white",   // frame colour (COLOURS in config.js)
   effectId: "none",    // sparkles, hearts... (js/effects.js)
+  stickers: [],        // placed stickers: { id, type, x, y (0-1 of the print), h (height, 0-1 of its width), r (turn) }
   filterId: "none",
   shots:    [],      // one raw (unfiltered) canvas per slot, null = empty
   current:  0,       // which slot we're filling
@@ -58,6 +59,23 @@ const Mine = {
   add(id, token) { const m = this.all(); m[id] = token; localStorage.setItem("weddingsnap.mine", JSON.stringify(m)); },
   remove(id) { const m = this.all(); delete m[id]; localStorage.setItem("weddingsnap.mine", JSON.stringify(m)); },
   token(id) { return this.all()[id]; },
+};
+
+// Likes (♥) on album photos. Each phone has its own random id so it can
+// only like a photo once; the photos it liked are remembered here.
+const Likes = {
+  me: localStorage.getItem("weddingsnap.liker") || (() => {
+    const id = randomToken();
+    localStorage.setItem("weddingsnap.liker", id);
+    return id;
+  })(),
+  all() { return new Set(JSON.parse(localStorage.getItem("weddingsnap.liked") || "[]")); },
+  has(id) { return this.all().has(id); },
+  set(id, on) {
+    const s = this.all();
+    if (on) s.add(id); else s.delete(id);
+    localStorage.setItem("weddingsnap.liked", JSON.stringify([...s]));
+  },
 };
 
 // Photos kept in this browser (IndexedDB):
@@ -146,6 +164,7 @@ let ignorePop = false;
 function show(screenId) {
   document.body.classList.toggle("navBack", SCREENS.indexOf(screenId) < SCREENS.indexOf(current));
   current = screenId;
+  if (screenId !== "edit") stopClip();
   document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === screenId));
   document.querySelector('meta[name="theme-color"]')
     .setAttribute("content", screenId === "booth" ? "#110e0f" : "#f8f1ee");
@@ -478,7 +497,7 @@ window.addEventListener("songchange", (e) => {
 // Layout cards, grouped (Strips / Single photo / Grids & collage), each
 // group 3 across. They flow in one after another; the last one picked is
 // highlighted when the guest comes back.
-const LAYOUT_GROUPS = ["Strips", "Single photo", "Grids & collage"];
+const LAYOUT_GROUPS = ["Strips", "Single photo", "Boomerang", "Grids & collage"];
 
 function buildLayoutCards() {
   const grid = $("layoutGrid");
@@ -532,6 +551,8 @@ function chooseLayout(id) {
 }
 
 function resetShots() {
+  state.clip = null;
+  state.stickers = [];
   state.shots = layout().slots.map(() => null);
   state.current = 0;
   state.retakeOne = false;
@@ -630,6 +651,7 @@ function renderBooth() {
   const total = state.shots.length;
   $("boothTitle").textContent = state.retakeOne
     ? "Retake photo " + (state.current + 1)
+    : layout().motion ? "Boomerang"
     : total === 1 ? "Strike a pose" : "Shot " + (state.current + 1) + " of " + total;
 
   const dots = $("slotDots");
@@ -656,6 +678,7 @@ function renderBooth() {
   const left = state.shots.filter((s) => !s).length;
   $("boothHint").textContent = state.busy ? ""
     : state.retakeOne ? `Tap the shutter to retake this photo (${state.timer}s countdown)`
+    : layout().motion ? `Tap the shutter: ${state.timer}s countdown, then keep moving for a second`
     : left > 1 ? `Tap the shutter: ${left} photos, ${state.timer}s countdown before each`
     : `Tap the shutter: ${state.timer}s countdown`;
 }
@@ -679,9 +702,8 @@ function buildLiveFilters() {
 
 // Grab the current camera frame, cropped to the slot shape.
 // Stored WITHOUT filter so the guest can still change it later.
-function capture() {
+function capture(long = 1400) {   // 1400 px: enough detail for printing, small enough to upload
   const s = slotNow();
-  const long = 1400;   // enough detail for printing, small enough to upload
   const w = s.w >= s.h ? long : Math.round(long * s.w / s.h);
   const h = s.w >= s.h ? Math.round(long * s.h / s.w) : long;
 
@@ -726,6 +748,75 @@ async function runCountdown(runId) {
   return runId === state.runId;
 }
 
+// ---------- Boomerang ----------
+// A burst of small frames (small = light on memory), played forwards then
+// backwards on a loop
+const CLIP_FRAMES = 12;
+const CLIP_GAP = 110;   // ms between frames: 12 frames ≈ 1.3 s
+
+async function recordClip(runId) {
+  $("viewfinder").classList.add("rec");
+  $("countdown").classList.add("show", "rec");
+  $("countNum").textContent = "";
+  $("countHint").textContent = "Keep moving!";
+  const frames = [];
+  for (let i = 0; i < CLIP_FRAMES; i++) {
+    if (runId !== state.runId) break;
+    frames.push(capture(720));
+    await wait(CLIP_GAP);
+  }
+  $("viewfinder").classList.remove("rec");
+  $("countdown").classList.remove("show", "rec");
+  return runId === state.runId ? frames : null;
+}
+
+// 1 2 3 … 12 11 … 2, then round again
+const clipSequence = () => [...state.clip, ...state.clip.slice(1, -1).reverse()];
+
+// The edit preview plays the clip while the guest picks colours, effects…
+let clipTimer = null;
+function playClip() {
+  stopClip();
+  if (!state.clip) return;
+  const seq = clipSequence();
+  let k = 0;
+  clipTimer = setInterval(() => {
+    state.shots[0] = seq[k++ % seq.length];
+    compose(preview);
+  }, CLIP_GAP);
+}
+function stopClip() {
+  clearInterval(clipTimer);
+  clipTimer = null;
+  if (state.clip) state.shots[0] = state.clip[0];
+}
+
+// The whole print, every frame, as a looping GIF (540 px wide)
+async function makeGif() {
+  stopClip();
+  const g = layout();
+  const W = 540, H = Math.round(g.height * 540 / g.width);
+  const full = document.createElement("canvas");
+  const small = document.createElement("canvas");
+  small.width = W; small.height = H;
+  const sctx = small.getContext("2d", { willReadFrequently: true });
+  const gif = gifenc.GIFEncoder();
+  let palette = null;
+  for (const frame of clipSequence()) {
+    state.shots[0] = frame;
+    compose(full);
+    sctx.drawImage(full, 0, 0, W, H);
+    const rgba = sctx.getImageData(0, 0, W, H).data;
+    // one set of colours for every frame, so the paper doesn't flicker
+    if (!palette) palette = gifenc.quantize(rgba, 256);
+    gif.writeFrame(gifenc.applyPalette(rgba, palette), W, H, { palette, delay: CLIP_GAP });
+    await wait(0);   // let the page breathe
+  }
+  gif.finish();
+  state.shots[0] = state.clip[0];
+  return new Blob([gif.bytes()], { type: "image/gif" });
+}
+
 // Shutter: shoot every empty slot in a row (or just one when retaking)
 $("shutterBtn").addEventListener("click", async () => {
   if (state.busy || !state.stream) return;
@@ -733,6 +824,21 @@ $("shutterBtn").addEventListener("click", async () => {
   const runId = ++state.runId;
   Sound.duck(true);
   renderBooth();
+
+  // Boomerang: one countdown, then a burst of frames
+  if (layout().motion) {
+    if (!(await runCountdown(runId))) return;
+    const frames = await recordClip(runId);
+    if (!frames) return;
+    Sound.shutter();
+    flash();
+    state.clip = frames;
+    state.shots[0] = frames[0];
+    state.busy = false;
+    Sound.duck(false);
+    goToEdit();
+    return;
+  }
 
   const todo = state.retakeOne
     ? [state.current]
@@ -773,6 +879,7 @@ $("pickFile").addEventListener("change", (e) => {
     URL.revokeObjectURL(img.src);
 
     state.shots[state.current] = shot;
+    state.clip = null;   // a picked photo can't move: saved as a still
     const nextEmpty = state.shots.findIndex((x) => !x);
     if (state.retakeOne || nextEmpty === -1) goToEdit();
     else { state.current = nextEmpty; renderBooth(); }
@@ -797,7 +904,8 @@ function cancelCountdown() {
   state.runId++;
   state.busy = false;
   Sound.duck(false);
-  $("countdown").classList.remove("show");
+  $("countdown").classList.remove("show", "rec");
+  $("viewfinder").classList.remove("rec");
   renderBooth();
 }
 
@@ -845,6 +953,13 @@ function compose(canvas, f = filter()) {
   drawPhotos(ctx, g, f);
   Effects.apply(ctx, g, state.effectId, c, state.layoutId);
   drawFooter(ctx, g, c);
+  // stickers on top of everything (on the preview they're the layer above it)
+  if (canvas !== preview) {
+    state.stickers.forEach((st) => {
+      const type = STICKERS.find((t) => t.id === st.type);
+      if (type) drawSticker(ctx, type, st.x * g.width, st.y * g.height, st.h * g.width, st.r);
+    });
+  }
 }
 
 function drawPhotos(ctx, g, f) {
@@ -927,8 +1042,11 @@ async function goToEdit() {
   buildColourChips();
   buildEffectChips();
   buildFilterChips();
+  buildStickerChips();
+  renderStickers();
   compose(preview);
   show("edit");
+  playClip();
 }
 
 // Colour, Effects and Filter each have a tab, so the screen stays tidy
@@ -943,6 +1061,11 @@ document.querySelectorAll(".editTab").forEach((tab) => tab.addEventListener("cli
     t.setAttribute("aria-selected", t === tab);
   });
   document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== tab.dataset.pane));
+  const stickering = tab.dataset.pane === "sticker";
+  document.body.classList.toggle("stickering", stickering);
+  if (!stickering) selectSticker(null);
+  $("editTip").textContent = stickering ? "Drag to move · pinch or use the corner to resize and turn"
+                                        : "Tap a photo to retake it";
 }));
 
 function selectChip(wrap, chip) {
@@ -1002,6 +1125,135 @@ function buildEffectChips() {
   });
 }
 
+// ---------- Stickers ----------
+const stickerPics = {};   // sticker type → picture for the drag layer
+const stickerPic = (type) => stickerPics[type.id] || (stickerPics[type.id] = stickerImage(type, 260).toDataURL());
+let selectedSticker = null;
+
+function buildStickerChips() {
+  const wrap = $("stickerChips");
+  if (wrap.childElementCount) return;   // the same every time
+  STICKERS.forEach((type, i) => {
+    const chip = document.createElement("button");
+    chip.className = "swatch stickerChip";
+    flowIn(chip, i);
+    const thumb = document.createElement("span");
+    thumb.style.backgroundImage = `url("${stickerPic(type)}")`;
+    chip.appendChild(thumb);
+    chip.insertAdjacentHTML("beforeend", `<small>${type.name}</small>`);
+    chip.addEventListener("click", () => {
+      tick();
+      const st = { id: randomToken(), type: type.id, x: 0.5, y: 0.32, h: type.aspect > 2 ? 0.12 : 0.2, r: (Math.random() - 0.5) * 0.3 };
+      state.stickers.push(st);
+      renderStickers();
+      selectSticker(st);
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+// The drag-around layer over the preview
+function renderStickers() {
+  const layer = $("stickerLayer");
+  layer.replaceChildren();
+  state.stickers.forEach((st) => {
+    const type = STICKERS.find((t) => t.id === st.type);
+    if (!type) return;
+    const el = document.createElement("div");
+    el.className = "sticker" + (st === selectedSticker ? " selected" : "");
+    el.dataset.id = st.id;
+    const img = document.createElement("img");
+    img.src = stickerPic(type);
+    img.alt = type.name;
+    img.draggable = false;
+    const del = document.createElement("button");
+    del.className = "stickerDel";
+    del.setAttribute("aria-label", "Remove sticker");
+    del.textContent = "×";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.stickers = state.stickers.filter((s) => s !== st);
+      selectedSticker = null;
+      renderStickers();
+    });
+    const handle = document.createElement("span");
+    handle.className = "stickerHandle";
+    el.append(img, del, handle);
+    placeSticker(el, st);
+    stickerGestures(el, st, type);
+    layer.appendChild(el);
+  });
+}
+
+function placeSticker(el, st) {
+  const type = STICKERS.find((t) => t.id === st.type);
+  // the picture has a margin of 12% of its height all round
+  el.style.left = st.x * 100 + "%";
+  el.style.top = st.y * 100 + "%";
+  el.style.width = st.h * (type.aspect + 0.24) * 100 + "%";
+  el.style.transform = `translate(-50%, -50%) rotate(${st.r}rad)`;
+}
+
+function selectSticker(st) {
+  selectedSticker = st;
+  document.querySelectorAll(".sticker").forEach((el) => el.classList.toggle("selected", !!st && el.dataset.id === st.id));
+}
+
+// Drag with one finger; pinch / twist with two; or drag the corner handle
+function stickerGestures(el, st, type) {
+  const pts = new Map();
+  let start = null;
+  const layerBox = () => $("stickerLayer").getBoundingClientRect();
+  const snapshot = (handle) => {
+    const box = layerBox(), list = [...pts.values()];
+    const centre = { x: box.left + st.x * box.width, y: box.top + st.y * box.height };
+    const a = list[0], b = list[1] || centre;   // handle: measure from the sticker's centre
+    return { box, x: st.x, y: st.y, h: st.h, r: st.r, handle, a: { ...a },
+             dist: Math.hypot(b.x - a.x, b.y - a.y) || 1, ang: Math.atan2(b.y - a.y, b.x - a.x),
+             mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+  };
+  el.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".stickerDel")) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    selectSticker(st);
+    start = snapshot(e.target.closest(".stickerHandle") || pts.size === 2 ? (pts.size === 2 ? "pinch" : "handle") : "drag");
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!pts.has(e.pointerId) || !start) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const now = snapshot(start.handle);
+    if (start.handle === "drag") {
+      st.x = start.x + (now.a.x - start.a.x) / start.box.width;
+      st.y = start.y + (now.a.y - start.a.y) / start.box.height;
+    } else {
+      st.h = Math.min(1.2, Math.max(0.05, start.h * now.dist / start.dist));
+      st.r = start.r + (now.ang - start.ang);
+      if (start.handle === "pinch") {
+        st.x = start.x + (now.mid.x - start.mid.x) / start.box.width;
+        st.y = start.y + (now.mid.y - start.mid.y) / start.box.height;
+      }
+    }
+    st.x = Math.min(1.05, Math.max(-0.05, st.x));
+    st.y = Math.min(1.05, Math.max(-0.05, st.y));
+    placeSticker(el, st);
+  });
+  const end = (e) => {
+    pts.delete(e.pointerId);
+    start = pts.size ? snapshot(pts.size === 2 ? "pinch" : "drag") : null;
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+  // computers: scroll to resize, Shift + scroll to turn
+  el.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    if (e.shiftKey) st.r += e.deltaY * 0.003;
+    else st.h = Math.min(1.2, Math.max(0.05, st.h * (1 - e.deltaY * 0.001)));
+    placeSticker(el, st);
+  }, { passive: false });
+}
+
 // Filter chips show a tiny preview of photo 1 with that filter
 function buildFilterChips() {
   const wrap = $("filterChips");
@@ -1028,6 +1280,7 @@ function buildFilterChips() {
 
 // Tap a photo on the preview → retake just that one
 preview.addEventListener("click", (e) => {
+  if (document.body.classList.contains("stickering") || selectedSticker) { selectSticker(null); return; }
   const rect = preview.getBoundingClientRect();
   const x = (e.clientX - rect.left) * preview.width / rect.width;
   const y = (e.clientY - rect.top) * preview.height / rect.height;
@@ -1068,11 +1321,21 @@ $("doneBtn").addEventListener("click", async () => {
   $("doneBtn").disabled = true;
   stopCamera();
 
-  const out = document.createElement("canvas");
-  compose(out);
-  const blob = await new Promise((r) => out.toBlob(r, "image/jpeg", 0.9));
+  let blob, dataUrl;
+  if (state.clip) {
+    const label = $("doneBtn").textContent;
+    $("doneBtn").textContent = "Making your boomerang…";
+    blob = await makeGif();
+    dataUrl = await blobToDataUrl(blob);
+    $("doneBtn").textContent = label;
+  } else {
+    const out = document.createElement("canvas");
+    compose(out);
+    blob = await new Promise((r) => out.toBlob(r, "image/jpeg", 0.9));
+    dataUrl = out.toDataURL("image/jpeg", 0.88);
+  }
   if (state.final) URL.revokeObjectURL(state.final.url);
-  state.final = { blob, url: URL.createObjectURL(blob), dataUrl: out.toDataURL("image/jpeg", 0.88) };
+  state.final = { blob, url: URL.createObjectURL(blob), dataUrl };
 
   $("resultImg").src = state.final.url;
   $("doneBtn").disabled = false;
@@ -1299,7 +1562,8 @@ async function upload(wish = {}) {
 
 // Phones: open the share sheet ("Save Image"). Computers: normal download.
 async function savePhoto(blob, name) {
-  const file = new File([blob], name, { type: "image/jpeg" });
+  if (blob.type === "image/gif") name = name.replace(/\.jpg$/, ".gif");   // boomerang
+  const file = new File([blob], name, { type: blob.type || "image/jpeg" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file] }); return; }
     catch (e) { if (e.name === "AbortError") return; }
@@ -1329,6 +1593,8 @@ let galleryList = [];     // the photos showing right now (Everyone or Mine)
 let galleryTab = "all";
 const thumbUrl = (id, size) => `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
 const photoSrc = (p, size) => p.url || thumbUrl(p.id, size);
+// the full GIF, so a boomerang moves (Drive's thumbnails are stills)
+const gifUrl = (id) => `https://drive.google.com/uc?export=view&id=${id}`;
 
 // Photos stored on this phone (private + waiting to send), shown under Mine
 async function loadPrivate() {
@@ -1384,7 +1650,8 @@ function renderGallery() {
   grid.innerHTML = "";
   list.forEach((p, i) => {
     const item = document.createElement("button");
-    item.className = "tile" + (p.private ? " private" : p.pending ? " pending" : mine[p.id] ? " mine" : "");
+    item.className = "tile" + (p.private ? " private" : p.pending ? " pending" : mine[p.id] ? " mine" : "") +
+      (p.gif || (p.blob && p.blob.type === "image/gif") ? " gif" : "");
     item.style.setProperty("--i", Math.min(i, 10));
     const img = document.createElement("img");
     img.loading = "lazy";
@@ -1392,6 +1659,7 @@ function renderGallery() {
     img.src = photoSrc(p, 500);
     img.alt = "";
     item.appendChild(img);
+    if (!p.blob) item.appendChild(likeButton(p));   // album photos only
     if (p.wish) {
       const wish = document.createElement("span");
       wish.className = "tileWish";
@@ -1402,6 +1670,51 @@ function renderGallery() {
     item.addEventListener("click", () => openLightbox(i, img));
     grid.appendChild(item);
   });
+}
+
+// ---------- Likes ----------
+// ♥ + count. Tapping it likes / un-likes (and doesn't open the photo).
+function likeButton(p) {
+  const btn = document.createElement("span");
+  btn.className = "likeBtn";
+  btn.setAttribute("role", "button");
+  btn.dataset.id = p.id;
+  btn.addEventListener("click", (e) => { e.stopPropagation(); toggleLike(p); });
+  paintLike(btn, p);
+  return btn;
+}
+function paintLike(btn, p) {
+  const on = Likes.has(p.id);
+  btn.classList.toggle("on", on);
+  btn.textContent = (on ? "♥" : "♡") + (p.likes ? " " + p.likes : "");
+  btn.setAttribute("aria-label", (on ? "Unlike" : "Like") + (p.likes ? ` (${p.likes} likes)` : ""));
+}
+function paintLikes(p) {
+  document.querySelectorAll(`.likeBtn[data-id="${p.id}"]`).forEach((b) => paintLike(b, p));
+}
+
+// Shows straight away; quietly undone if it can't reach the album
+async function toggleLike(p, forceOn) {
+  const on = forceOn ?? !Likes.has(p.id);
+  if (on === Likes.has(p.id)) return;
+  tick();
+  Likes.set(p.id, on);
+  p.likes = Math.max(0, (p.likes || 0) + (on ? 1 : -1));
+  paintLikes(p);
+  try {
+    const res = await fetch(CONFIG.SCRIPT_URL, {
+      method: "POST",
+      body: JSON.stringify({ action: "like", id: p.id, liker: Likes.me, on }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    p.likes = data.likes;   // the real count (others may have liked it too)
+  } catch (err) {
+    Likes.set(p.id, !on);
+    p.likes = Math.max(0, p.likes + (on ? -1 : 1));
+    toast("Couldn't like it right now - check your signal");
+  }
+  paintLikes(p);
 }
 
 document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => {
@@ -1477,7 +1790,7 @@ function showPhoto(i) {
     big.onload = () => {
       if (lbPhoto && lbPhoto.id === id) { img.src = big.src; img.classList.remove("loading"); }
     };
-    big.src = thumbUrl(id, 1600);
+    big.src = lbPhoto.gif ? gifUrl(id) : thumbUrl(id, 1600);
   }
   // Preload the neighbours so swiping feels instant
   if (n > 1) [lbIndex + 1, lbIndex - 1].forEach((j) => { new Image().src = photoSrc(galleryList[(j + n) % n], 1600); });
@@ -1487,6 +1800,10 @@ function showPhoto(i) {
   $("lbNext").classList.toggle("hidden", n < 2);
   $("lbDelete").classList.toggle("hidden", !local && !Mine.token(id));
   $("lbShare").classList.toggle("hidden", !lbPhoto.private || !CONFIG.SCRIPT_URL);
+  // ♥ for album photos
+  const likeSlot = $("lbLikeSlot");
+  likeSlot.replaceChildren();
+  if (!local) likeSlot.appendChild(likeButton(lbPhoto));
   const tag = lbPhoto.private ? "PRIVATE" : lbPhoto.pending ? "SENDING…" : "";
   $("lbCount").textContent += tag ? (n > 1 ? "  ·  " : "") + tag : "";
 
@@ -1516,6 +1833,20 @@ $("lbPrev").addEventListener("click", () => showPhoto(lbIndex - 1));
 $("lbNext").addEventListener("click", () => showPhoto(lbIndex + 1));
 // Tap the dark area around the photo to close
 lb.addEventListener("click", (e) => { if (e.target === lb || e.target === $("lbStage")) closeLightbox(); });
+
+// Double-tap the photo to like it (with a heart that pops up)
+let lastTap = 0;
+$("lbImg").addEventListener("pointerup", () => {
+  const now = Date.now();
+  if (now - lastTap < 320 && lbPhoto && !lbPhoto.blob) {
+    toggleLike(lbPhoto, true);
+    const heart = $("lbHeart");
+    heart.classList.remove("pop");
+    void heart.offsetWidth;   // restart the animation
+    heart.classList.add("pop");
+  }
+  lastTap = now;
+});
 
 // Swipe left / right
 let swipeX = null, swipeY = null;
@@ -1602,3 +1933,11 @@ $("lbDelete").addEventListener("click", async () => {
 buildLayoutCards();
 resetShots();
 Sender.flush();   // photos left waiting from last time (bad signal) go now
+
+// Offline: keep the app's files on the phone so it opens with no signal
+// (sw.js). Not on your own computer while editing - it would keep showing
+// old files - unless you add ?sw=1 to the address to test it.
+const local = ["localhost", "127.0.0.1"].includes(location.hostname);
+if ("serviceWorker" in navigator && location.protocol !== "file:" && (!local || /[?&]sw=1/.test(location.search))) {
+  navigator.serviceWorker.register("sw.js").catch((err) => console.warn("Offline support not available:", err));
+}

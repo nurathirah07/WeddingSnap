@@ -143,10 +143,20 @@
           <button class="tab" data-view="wishes">Wishes <span id="nWishes"></span></button>
         </div>
         <div class="row">
+          <select id="albumSort" aria-label="Sort photos">
+            <option value="new">Newest first</option>
+            <option value="liked">Most liked</option>
+          </select>
           <button class="btn ghost small" id="albumRefresh">Refresh</button>
-          <button class="btn ghost small" id="wishCsv">Download wishes</button>
           <button class="btn link" id="albumLock">Lock</button>
         </div>
+      </div>
+      <!-- Keep everything: all photos as zip files + the wishes as a spreadsheet -->
+      <div class="keepAll">
+        <button class="btn primary small" id="zipAll">Download all photos</button>
+        <button class="btn ghost small" id="wishCsv">Download wishes</button>
+        <p class="hint" id="zipStatus"></p>
+        <div class="row left" id="zipLinks"></div>
       </div>
       <div class="albumGrid" id="albumGrid"></div>
       <ol class="wishList hidden" id="wishList"></ol>

@@ -61,8 +61,9 @@ async function poll() {
   }
 }
 
+// Guests' favourites (3+ likes) come round twice as often
 function shuffle(list) {
-  const a = list.slice();
+  const a = list.flatMap((p) => (p.likes >= 3 ? [p, p] : [p]));
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
@@ -113,7 +114,8 @@ async function next() {
   }
   loading = true;
   try {
-    const img = await loadImage(thumbUrl(choice.photo.id, 1600));
+    // a boomerang: the full GIF, so it moves
+    const img = await loadImage(choice.photo.gif ? `https://drive.google.com/uc?export=view&id=${choice.photo.id}` : thumbUrl(choice.photo.id, 1600));
     $("showEmpty").classList.add("hidden");
     show(choice.photo, img, choice.isNew);
   } catch (err) {
@@ -144,6 +146,12 @@ function show(photo, img, isNew) {
     badge.className = "slideNew";
     badge.textContent = "Just taken";
     print.appendChild(badge);
+  }
+  if (photo.likes) {
+    const likes = document.createElement("span");
+    likes.className = "slideLikes";
+    likes.textContent = "♥ " + photo.likes;
+    print.appendChild(likes);
   }
 
   const words = document.createElement("div");

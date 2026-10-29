@@ -13,11 +13,16 @@ No app download, no login. Total cost: RM0.
 - **Retakes:** tap any photo on the edit screen to retake just that one
 - **Gallery picks:** choose a photo from the phone instead of the camera
 - **Uploads:** photos go automatically to Google Drive. With a bad signal they wait on the phone and send by themselves later (never twice).
+- **Works offline:** after the first visit the app opens with no signal, and it can be added to the home screen like an app (`sw.js`, `manifest.webmanifest`)
+- **Boomerang:** a short clip that plays back and forth, saved as a looping GIF in the same print design
+- **Stickers:** "Tahniah!", "Selamat Pengantin Baru", a songkok, crown, heart shades… guests drag, pinch to resize and turn
+- **Likes:** guests ♥ photos in the gallery (or double-tap in the viewer); favourites come up more on the slideshow
 - **Wishes (ucapan):** guests can add their name and a short wish when they share a photo
 - **Live slideshow:** `slideshow.html` on a TV or projector shows new photos as they arrive, with their wishes
 - **Shared gallery:** everyone's photos, with a "Mine" tab
 - **Delete:** guests can delete their own uploads, but not anyone else's. The couple can hide or delete any photo from the admin page.
 - **Table card:** the admin page makes a printable QR card that matches the album cover
+- **Download all:** one button in admin packs every photo into zip files (plus the wishes as a spreadsheet)
 - **Save to phone:** opens the share sheet on mobile, downloads on desktop
 - **Music:** starts on the first tap. It shuffles the songs in `music/`, jumps straight to the chorus, mixes between songs with DJ transitions and repeats forever (Web Audio API). It also turns down during the countdown.
 
@@ -34,9 +39,13 @@ js/app.js            booth logic, canvas drawing, upload, gallery
 js/filters.js        filter maths (works on iPhone too)
 js/audio.js          music + sound effects
 js/effects.js        effects on the print (sparkles, hearts…)
+js/stickers.js       stickers guests place on the print
+js/vendor/           qrcode.js (QR codes), gifenc.js (boomerang GIFs) - both MIT
+sw.js                offline support (keeps the app's files on the phone)
+manifest.webmanifest + icons/   "add to home screen"
+css/fonts/           wedding fonts: .woff2 (small, for the web) + .otf originals
 music/               drop mp3s here (songs.json is made automatically)
-tools/               build-music.mjs (finds choruses)
-                     (finds photo windows), preview-music.html
+tools/               build-music.mjs (finds choruses), preview-music.html
 apps-script/Code.gs  Google Drive backend
 .github/workflows/   auto scan songs, publish to GitHub Pages
 ```
@@ -129,6 +138,27 @@ Keep the mp3s small, since guests stream them on mobile data. 128 kbps is plenty
 - **Slideshow:** open `https://<username>.github.io/<repo>/slideshow.html` on a laptop connected to the TV or projector and click once for full screen. New photos show up within a few seconds, marked "Just taken". Turn off the laptop's sleep timer.
 - **Unsuitable photo?** Admin page → **Photos & wishes** → **Hide**. It disappears from the gallery and the slideshow but stays in your Drive. **Delete** moves it to the Drive bin.
 - **Wishes:** read them all under **Photos & wishes → Wishes**, or **Download wishes** for a spreadsheet (they're also in each photo's description in Drive).
+- **Keep everything:** admin → **Photos & wishes** → **Download all photos**. Big albums come in parts of about 25 MB (Google's limit for one file); download every part. The zips are also saved in a `Downloads` folder inside the album in Drive.
+- **Favourites:** sort the admin album by **Most liked** to find the night's best photos.
+
+## Before the day: test on real phones
+
+Everything has been tested in Chrome on a computer; phones behave a little differently. A week before, try this on **one iPhone and one Android phone**:
+
+1. **Open the link** from the table card QR code. The welcome cover shows, and tapping it starts the music.
+2. **Music:** leave it for 2 minutes - songs should change smoothly. Lock the phone and unlock it: the music should carry on (or start again on the next tap).
+3. **Camera:** take a 4-Cut strip. The camera permission question should appear the first time. Try the front and back cameras.
+4. **Boomerang:** record one. It should loop on the edit screen and on the result screen.
+5. **Stickers:** add two, drag them, pinch to resize and turn, remove one with ×.
+6. **Share with no signal:** turn on Airplane mode, share a photo with a wish. It should say "Saved on your phone". Turn Airplane mode off: within a few seconds "Your photo reached the album ✓".
+7. **Offline:** with Airplane mode on, close the browser tab and open the link again - the app should still open.
+8. **Likes:** ♥ a photo in the gallery; check the number goes up in admin.
+9. **Save to phone:** a photo and a boomerang both save to the camera roll / gallery.
+10. **Add to home screen** (Safari: Share → Add to Home Screen; Chrome: ⋮ → Install app), then open it from the icon.
+11. **Slideshow** on the actual TV or projector: new photos appear within a few seconds; the QR code in the corner scans from across the room.
+12. **Admin:** open the album with your admin key, hide a photo (it leaves the slideshow), then **Download all photos**.
+
+If anything is off, note which phone, which browser and what happened.
 
 ## 4. Host on GitHub Pages
 

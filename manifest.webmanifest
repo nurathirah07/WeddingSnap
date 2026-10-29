@@ -1,0 +1,15 @@
+{
+  "name": "Wedding Snap · Photobooth",
+  "short_name": "Wedding Snap",
+  "description": "Take photos at the wedding, add a wish and share them with the couple.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8f1ee",
+  "theme_color": "#f8f1ee",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

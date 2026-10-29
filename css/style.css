@@ -2,13 +2,14 @@
    Wedding Snap - modern photobooth
    ========================================================= */
 
-/* Wedding fonts (css/fonts):
+/* Wedding fonts (css/fonts). The .woff2 files are small web versions (only
+   the letters and symbols used here); the .otf originals are the backup.
    Runiga        - big titles
    Runethia      - script: the couple's names, the monogram
    Orange Avenue - elegant serif for everything else that isn't plain text */
-@font-face { font-family: "Runiga"; src: local("Runiga"), url("fonts/Runiga.otf") format("opentype"); font-display: swap; }
-@font-face { font-family: "Runethia"; src: local("Runethia"), url("fonts/Runethia.otf") format("opentype"); font-display: swap; }
-@font-face { font-family: "Orange Avenue"; src: local("Orange Avenue DEMO"), local("OrangeAvenueDEMO-Regular"), url("fonts/OrangeAvenueDEMO-Regular.otf") format("opentype"); font-display: swap; }
+@font-face { font-family: "Runiga"; src: local("Runiga"), url("fonts/Runiga.woff2") format("woff2"), url("fonts/Runiga.otf") format("opentype"); font-display: swap; }
+@font-face { font-family: "Runethia"; src: local("Runethia"), url("fonts/Runethia.woff2") format("woff2"), url("fonts/Runethia.otf") format("opentype"); font-display: swap; }
+@font-face { font-family: "Orange Avenue"; src: local("Orange Avenue DEMO"), local("OrangeAvenueDEMO-Regular"), url("fonts/OrangeAvenueDEMO-Regular.woff2") format("woff2"), url("fonts/OrangeAvenueDEMO-Regular.otf") format("opentype"); font-display: swap; }
 
 :root {
   --bg: #f8f1ee;                          /* blush ivory (a colour, used for text on dark buttons too) */
@@ -1326,3 +1327,83 @@ body:has(#lightbox:not(.hidden)) .musicBtn { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .layoutGrid > *, .chips .swatch, .masonry .tile, .result-inner > *, .flow li.now::before { animation: none; }
 }
+
+/* ---------- Likes ---------- */
+.likeBtn {
+  position: absolute;
+  left: 8px; bottom: 8px;
+  z-index: 1;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 250, 247, 0.92);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.2;
+  box-shadow: 0 2px 8px rgba(42, 31, 34, 0.15);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.likeBtn:active { transform: scale(0.9); }
+.likeBtn.on { color: #d6456e; }
+.likeBtn.on::first-letter { animation: likePop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes likePop { 50% { font-size: 1.4em; } }
+/* a wish runs along the bottom of the tile: lift the heart above it */
+.tile:has(.tileWish) .likeBtn { bottom: auto; top: 8px; left: auto; right: 8px; }
+/* in the viewer: a normal-sized button next to Save */
+#lbLikeSlot .likeBtn { position: static; display: inline-flex; align-items: center; height: 48px; padding: 0 20px; font-size: 15px; }
+.lbHeart {
+  position: absolute;
+  left: 50%; top: 50%;
+  font-size: 110px;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 6px 30px rgba(214, 69, 110, 0.7);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.4);
+}
+.lbHeart.pop { animation: heartPop 0.8s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes heartPop {
+  25% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  60% { opacity: 1; transform: translate(-50%, -50%) scale(0.95); }
+  100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+}
+
+/* ---------- Boomerang ---------- */
+/* recording: a pulsing red edge round the camera */
+#viewfinder.rec { box-shadow: 0 0 0 4px #e5484d, 0 0 30px rgba(229, 72, 77, 0.6); animation: recPulse 0.9s ease-in-out infinite; }
+@keyframes recPulse { 50% { box-shadow: 0 0 0 4px rgba(229, 72, 77, 0.45), 0 0 14px rgba(229, 72, 77, 0.25); } }
+#countdown.rec { background: none; }
+#countdown.rec small::before { content: "● "; color: #e5484d; }
+/* a boomerang tile: loop arrows instead of the "open" arrows */
+.tile.gif::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12a8 8 0 0 1 13.7-5.7M20 12a8 8 0 0 1-13.7 5.7'/%3E%3Cpath d='M18 2v4.5h-4.5M6 22v-4.5h4.5'/%3E%3C/svg%3E");
+}
+
+/* ---------- Stickers ---------- */
+.previewBox { position: relative; display: inline-block; line-height: 0; }
+.stickerLayer { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.sticker {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+  animation: stickerIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes stickerIn { from { opacity: 0; scale: 0.4; } }
+.sticker img { display: block; width: 100%; height: auto; pointer-events: none; -webkit-user-select: none; user-select: none; }
+.sticker.selected { outline: 1.5px dashed rgba(42, 31, 34, 0.55); outline-offset: -6%; cursor: grabbing; }
+.stickerDel, .stickerHandle {
+  position: absolute;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: none;
+  place-items: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.sticker.selected .stickerDel, .sticker.selected .stickerHandle { display: grid; }
+.stickerDel { top: 0; right: 0; transform: translate(35%, -35%); border: none; background: var(--ink); color: #fff; font-size: 17px; line-height: 1; padding: 0 0 2px; }
+.stickerHandle { bottom: 0; right: 0; transform: translate(35%, 35%); background: #fff; border: 2px solid var(--accent); cursor: nwse-resize; }
+.stickerHandle::after { content: "↻"; font-size: 13px; color: var(--accent); line-height: 1; }
+/* sticker chips */
+.swatch.stickerChip span { background-size: contain; background-repeat: no-repeat; background-color: #fff; }

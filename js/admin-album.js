@@ -24,6 +24,7 @@
   let key = localStorage.getItem(KEY_STORE) || "";
   let photos = [];
   let view = "photos";
+  let sort = "new";
 
   async function call(action, extra = {}) {
     if (!CONFIG.SCRIPT_URL) throw new Error("The album isn't connected (SCRIPT_URL in js/config.js)");
@@ -69,7 +70,8 @@
     const grid = $("albumGrid");
     grid.replaceChildren();
     if (!photos.length) grid.textContent = "No photos yet.";
-    photos.forEach((p) => {
+    const shown = sort === "liked" ? photos.slice().sort((a, b) => (b.likes || 0) - (a.likes || 0) || b.time - a.time) : photos;
+    shown.forEach((p) => {
       const card = document.createElement("div");
       card.className = "albumItem" + (p.hidden ? " isHidden" : "");
       const a = document.createElement("a");
@@ -90,7 +92,7 @@
       const info = document.createElement("div");
       info.className = "albumInfo";
       const when = document.createElement("small");
-      when.textContent = fmtWhen(p.time) + (p.name ? " · " + p.name : "");
+      when.textContent = fmtWhen(p.time) + (p.name ? " · " + p.name : "") + (p.likes ? " · ♥ " + p.likes : "") + (p.gif ? " · boomerang" : "");
       info.appendChild(when);
       if (p.wish) {
         const w = document.createElement("p");
@@ -175,6 +177,37 @@
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
+
+  $("albumSort").addEventListener("change", (e) => { sort = e.target.value; renderAlbum(); });
+
+  // "Download all photos": the Apps Script zips them in Google Drive, one
+  // part (about 25 MB) at a time, and each part gets its own button
+  $("zipAll").addEventListener("click", async () => {
+    const btn = $("zipAll"), status = $("zipStatus"), links = $("zipLinks");
+    btn.disabled = true;
+    links.replaceChildren();
+    let part = 1, parts = 1;
+    try {
+      do {
+        status.textContent = parts > 1 ? `Packing part ${part} of ${parts}…` : "Packing the photos… (a minute or so)";
+        const data = await call("adminZip", { part });
+        parts = data.parts;
+        const a = document.createElement("a");
+        a.className = "btn ghost small";
+        a.href = data.url;
+        a.target = "_blank";
+        a.textContent = (data.parts > 1 ? `Part ${data.part} of ${data.parts}` : "Download zip") + ` · ${data.photos} photos`;
+        links.appendChild(a);
+        part++;
+      } while (part <= parts);
+      status.textContent = parts > 1
+        ? `Ready - download every part. They're also in a "Downloads" folder inside your album in Google Drive.`
+        : `Ready. It's also in a "Downloads" folder inside your album in Google Drive.`;
+    } catch (err) {
+      status.textContent = "Couldn't make the zip: " + err.message;
+    }
+    btn.disabled = false;
+  });
 
   $("albumConnect").addEventListener("click", () => { key = $("adminKey").value.trim(); if (key) openAlbum(); });
   $("adminKey").addEventListener("keydown", (e) => { if (e.key === "Enter") $("albumConnect").click(); });

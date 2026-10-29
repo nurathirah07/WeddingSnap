@@ -225,3 +225,17 @@ body.show:has(.showEmpty:not(.hidden)) .showCount { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .slideBg, .slidePrint, .slidePrint img, .slideWords { transition: none; animation: none; }
 }
+
+/* ♥ count on a photo guests liked */
+.slideLikes {
+  position: absolute;
+  left: -1.4vh; bottom: -1.4vh;
+  padding: 0.8vh 1.6vh;
+  border-radius: 999px;
+  background: rgba(255, 250, 247, 0.95);
+  color: #d6456e;
+  font-size: 2vh;
+  font-weight: 700;
+  box-shadow: 0 1vh 3vh rgba(0, 0, 0, 0.3);
+  animation: pop 0.6s 1s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
