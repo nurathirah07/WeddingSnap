@@ -79,16 +79,52 @@ const Sound = (() => {
   // The page went to the background (Safari closed or switched away from,
   // the phone locked, another app opened): go quiet. Music stays "on", so
   // resume() picks it up again when the guest comes back.
+  let away = false;   // the music was on when the guest left
   function pause() {
-    if (ac && ac.state === "running") ac.suspend().catch(() => {});
-    if (LOCAL) players.forEach((el) => el.pause());
+    if (!playing) return;
+    away = true;
+    stopMusic(true);   // remembers the song and the moment (see carryOn)
+    setTimeout(() => { if (!playing && ac && ac.state === "running") ac.suspend().catch(() => {}); }, 300);
   }
 
-  // Pick the music up again after an interruption (see app.js keepAlive)
-  function resume() {
+  // Back in the app (or any tap): carry on with the song from where it was.
+  // `tap` = called from a tap, the only time an iPhone lets sound wake up.
+  function resume(tap = false) {
+    if (document.hidden) return;
+    if (away) {
+      away = false;
+      startMusic();
+    }
     if (!playing || !ac) return;
-    if (ac.state !== "running") ac.resume().catch(() => {});
+    if (ac.state !== "running") wake(tap);
     if (LOCAL && current && current.paused) current.play().catch(() => {});
+  }
+
+  // iPhone: after Safari has been in the background the sound engine can
+  // stay asleep ("suspended" or "interrupted") until a tap, and now and then
+  // it won't wake at all. A tap wakes it; if it's still asleep by the next
+  // tap (or it's "interrupted"), start a fresh one and carry on the song.
+  let wakeFailed = false;
+  let wokeAt = 0;
+  function wake(tap) {
+    if (tap && (wakeFailed || ac.state === "interrupted")) return rebuild();
+    ac.resume().catch(() => {});
+    if (tap) wokeAt = performance.now();   // this tap woke the music: it isn't also a pause tap
+    const tried = ac;
+    setTimeout(() => { if (ac === tried && playing && ac.state !== "running") wakeFailed = true; }, 700);
+  }
+
+  function rebuild() {
+    wakeFailed = false;
+    wokeAt = performance.now();
+    stopMusic(true);   // remember where we are
+    const old = ac;
+    old.onstatechange = null;
+    ac = null; decks = null; echoBus = null; echoIn = null; analyser = null; freqData = null;
+    clearInterval(melodyTimer);
+    melodyTimer = null;
+    try { old.close(); } catch (e) {}
+    startMusic();      // a new engine (made during the tap, so it's allowed to play)
   }
 
   // =========================================================
@@ -427,7 +463,17 @@ const Sound = (() => {
       setTimeout(() => prefetch(gen), 3000);
     }
     announce(h.song);
-    nextAfter(gen, Math.max(3000, h.left + 1000));
+    // the next song is due once this one has played out - counted from when
+    // the sound is actually on (an iPhone may wait for a tap first)
+    const due = () => nextAfter(gen, Math.max(3000, h.left + 1000));
+    if (LOCAL || ac.state === "running") return due();
+    const ctx = ac;
+    const onRun = () => {
+      if (ctx.state !== "running") return;
+      ctx.removeEventListener("statechange", onRun);
+      if (gen === generation) due();
+    };
+    ctx.addEventListener("statechange", onRun);
   }
 
   function announce(song) {
@@ -690,7 +736,7 @@ const Sound = (() => {
     });
   }
 
-  function stopMusic() {
+  function stopMusic(quick = false) {
     // Remember where we were, so Play carries on with this song
     const left = nextAt - performance.now();
     held = null;
@@ -709,7 +755,7 @@ const Sound = (() => {
     early = null;
     switching = false;
     if (!ac) return;
-    setVolume(0, 0.8);
+    setVolume(0, quick ? 0.15 : 0.8);
     clearInterval(melodyTimer);   // notes already scheduled ring out under the fade
     melodyTimer = null;
     setTimeout(() => {
@@ -722,7 +768,7 @@ const Sound = (() => {
         d.gain.gain.cancelScheduledValues(ac.currentTime);
         d.gain.gain.setValueAtTime(0, ac.currentTime);
       });
-    }, 900);
+    }, quick ? 250 : 900);
   }
 
   // Turn the music down during the countdown so the beeps stand out
@@ -802,6 +848,13 @@ const Sound = (() => {
   return {
     unlock, pause, resume, beep, shutter, duck, canAutoplay, preload, levels,
     get playing() { return playing; },
-    toggle() { playing ? stopMusic() : startMusic(); return playing; },
+    toggle() {
+      // the tap that just woke the sound up after the guest came back
+      // isn't also a "pause" tap
+      if (playing && performance.now() - wokeAt < 1000) return playing;
+      away = false;
+      playing ? stopMusic() : startMusic();
+      return playing;
+    },
   };
 })();

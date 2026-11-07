@@ -188,9 +188,9 @@ function show(screenId) {
 // something interrupts the page (a pop-up, a call, switching apps) and
 // don't always start them again by themselves. The background is also
 // hidden in the booth, so it's restarted when the guest leaves it.
-function keepAlive() {
+function keepAlive(e) {
   if (document.hidden) return;
-  Sound.resume();
+  Sound.resume(!!(e && /^(pointerdown|touchend|click|keydown)$/.test(e.type)));   // a tap can wake the sound
   Wave.start();
   const bg = document.querySelector(".bgVideo");
   if (bg && bg.paused && current !== "booth") bg.play().catch(() => {});
@@ -207,7 +207,9 @@ document.addEventListener("visibilitychange", () => (document.hidden ? goQuiet()
 window.addEventListener("pagehide", goQuiet);
 window.addEventListener("pageshow", keepAlive);   // back from another page / the phone's app switcher
 window.addEventListener("focus", keepAlive);
-document.addEventListener("pointerdown", keepAlive, true);
+// a tap anywhere also wakes the sound if the phone kept it asleep
+// (iPhones only allow that during a tap: touchend / click count)
+["pointerdown", "touchend", "click"].forEach((type) => document.addEventListener(type, keepAlive, true));
 
 // "Are you sure?" in the page itself. The browser's confirm() shows a
 // system pop-up that, on phones, pauses the music and the background.
