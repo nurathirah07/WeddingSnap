@@ -195,7 +195,16 @@ function keepAlive() {
   const bg = document.querySelector(".bgVideo");
   if (bg && bg.paused && current !== "booth") bg.play().catch(() => {});
 }
-document.addEventListener("visibilitychange", keepAlive);
+// ...and the other way round: when the guest leaves (closes Safari, goes
+// to the home screen, locks the phone), the music stops instead of
+// carrying on in the background. It comes back when they return.
+function goQuiet() {
+  Sound.pause();
+  const bg = document.querySelector(".bgVideo");
+  if (bg) bg.pause();
+}
+document.addEventListener("visibilitychange", () => (document.hidden ? goQuiet() : keepAlive()));
+window.addEventListener("pagehide", goQuiet);
 window.addEventListener("pageshow", keepAlive);   // back from another page / the phone's app switcher
 window.addEventListener("focus", keepAlive);
 document.addEventListener("pointerdown", keepAlive, true);

@@ -374,9 +374,9 @@
     w.document.write(`<!DOCTYPE html><title>Table cards</title><style>
       @page { size: A4; margin: 0; }
       html, body { margin: 0; }
-      .sheet { width: 210mm; height: 297mm; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-      .sheet img { width: 105mm; height: 148.5mm; object-fit: cover; }
-    </style><div class="sheet">${'<img src="' + src + '">'.repeat(4)}</div>
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .sheet { width: 210mm; height: 297mm; display: grid; grid-template-columns: 105mm 105mm; grid-template-rows: 148.5mm 148.5mm; overflow: hidden; }
+      .sheet img { display: block; width: 105mm; height: 148.5mm; object-fit: cover; }    </style><div class="sheet">${('<img src="' + src + '">').repeat(4)}</div>
     <script>Promise.all([...document.images].map(i => i.decode())).then(() => { print(); });<\/script>`);
     w.document.close();
   });

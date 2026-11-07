@@ -76,6 +76,14 @@ const Sound = (() => {
     if (ac.state === "suspended") ac.resume();
   }
 
+  // The page went to the background (Safari closed or switched away from,
+  // the phone locked, another app opened): go quiet. Music stays "on", so
+  // resume() picks it up again when the guest comes back.
+  function pause() {
+    if (ac && ac.state === "running") ac.suspend().catch(() => {});
+    if (LOCAL) players.forEach((el) => el.pause());
+  }
+
   // Pick the music up again after an interruption (see app.js keepAlive)
   function resume() {
     if (!playing || !ac) return;
@@ -99,6 +107,8 @@ const Sound = (() => {
   let decks = null;
   let active = 0;         // which deck is playing now
   let nextTimer = null;
+  let nextAt = 0;         // when nextTimer fires (performance.now())
+  let held = null;        // the song paused with the music button, to carry on from
   let lastSong = null;
   let failures = 0;
   let queue = [];         // what's left to play this round
@@ -354,6 +364,7 @@ const Sound = (() => {
     src.connect(deck.filter);
     src.start(ac.currentTime + 0.05, clip.offset);
     deck.source = src;
+    Object.assign(deck, { startedAt: ac.currentTime + 0.05, offset: clip.offset, song: clip.seg.song });
     // Safety net: if the next clip is late (slow internet, phone asleep),
     // move on as soon as this one runs out instead of going silent
     src.onended = () => { if (decks[active] === deck && deck.source === src) playNext(gen); };
@@ -376,7 +387,47 @@ const Sound = (() => {
     announce(clip.seg.song);
 
     // When to start the next one
-    nextTimer = setTimeout(() => playNext(gen), Math.max(5, clip.playFor - M.CROSSFADE) * 1000);
+    nextAfter(gen, Math.max(5, clip.playFor - M.CROSSFADE) * 1000);
+  }
+
+  function nextAfter(gen, ms) {
+    clearTimeout(nextTimer);
+    nextAt = performance.now() + ms;
+    nextTimer = setTimeout(() => (LOCAL ? playNextLocal : playNext)(gen), ms);
+  }
+
+  // Play again after the music button paused it: the same song, from the
+  // same moment (a second back, so it doesn't start mid-word)
+  function carryOn(gen) {
+    const h = held;
+    held = null;
+    if (LOCAL) {
+      const el = h.el;
+      players.add(el);
+      current = el;
+      el.currentTime = Math.max(0, el.currentTime - 1);
+      el.fade = { from: 0, to: 0, start: 0, dur: 1 };
+      rampLevel(el.fade, 1, 1);
+      el.onended = () => { if (current === el) playNextLocal(gen); };
+      el.play().catch(() => playNextLocal(gen));
+    } else {
+      const deck = decks[active];
+      stopDeck(deck);
+      resetDeck(deck);
+      deck.gain.gain.cancelScheduledValues(ac.currentTime);
+      deck.gain.gain.setValueAtTime(0, ac.currentTime);
+      const at = Math.max(0, h.at - 1);
+      const src = ac.createBufferSource();
+      src.buffer = h.buffer;
+      src.connect(deck.filter);
+      src.start(ac.currentTime + 0.05, at);
+      Object.assign(deck, { source: src, startedAt: ac.currentTime + 0.05, offset: at, level: h.level, song: h.song });
+      src.onended = () => { if (decks[active] === deck && deck.source === src) playNext(gen); };
+      fade(deck.gain, deck.level, 1);
+      setTimeout(() => prefetch(gen), 3000);
+    }
+    announce(h.song);
+    nextAfter(gen, Math.max(3000, h.left + 1000));
   }
 
   function announce(song) {
@@ -439,6 +490,7 @@ const Sound = (() => {
       early = null;
       if (gen !== generation) { switching = false; return; }
       await clip.el.play();
+      if (document.hidden) clip.el.pause();   // the next song came up while the guest was away
       failures = 0;
     } catch (err) {
       early = null;
@@ -472,8 +524,9 @@ const Sound = (() => {
       }
     }, (M.CROSSFADE + 0.5) * 1000);
 
+    el.song = clip.seg.song;
     announce(clip.seg.song);
-    nextTimer = setTimeout(() => playNextLocal(gen), Math.max(5, clip.playFor - M.CROSSFADE) * 1000);
+    nextAfter(gen, Math.max(5, clip.playFor - M.CROSSFADE) * 1000);
   }
 
   // =========================================================
@@ -631,12 +684,23 @@ const Sound = (() => {
     // Song list is normally loaded long before the first tap, but just in case
     songsLoaded.then(() => {
       if (gen !== generation) return;
-      if (M.SONGS.length) (LOCAL ? playNextLocal : playNext)(gen);
+      if (held) carryOn(gen);
+      else if (M.SONGS.length) (LOCAL ? playNextLocal : playNext)(gen);
       else startMelody();
     });
   }
 
   function stopMusic() {
+    // Remember where we were, so Play carries on with this song
+    const left = nextAt - performance.now();
+    held = null;
+    if (LOCAL && current) {
+      held = { el: current, left, song: current.song };
+    } else if (!LOCAL && decks && decks[active].source && ac) {
+      const d = decks[active];
+      const at = d.offset + Math.max(0, ac.currentTime - d.startedAt);
+      if (at < d.source.buffer.duration - 3) held = { buffer: d.source.buffer, at, left, level: d.level, song: d.song };
+    }
     playing = false;
     generation++;
     clearTimeout(nextTimer);
@@ -651,7 +715,7 @@ const Sound = (() => {
     setTimeout(() => {
       if (playing) return;   // turned back on during the fade
       current = null;
-      players.forEach(release);
+      players.forEach((el) => (held && held.el === el ? (el.pause(), players.delete(el)) : release(el)));
       decks?.forEach((d) => {
         stopDeck(d);
         resetDeck(d);
@@ -736,7 +800,7 @@ const Sound = (() => {
   }
 
   return {
-    unlock, resume, beep, shutter, duck, canAutoplay, preload, levels,
+    unlock, pause, resume, beep, shutter, duck, canAutoplay, preload, levels,
     get playing() { return playing; },
     toggle() { playing ? stopMusic() : startMusic(); return playing; },
   };
